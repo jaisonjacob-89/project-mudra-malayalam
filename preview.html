@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="ml">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Project Mudra Malayalam</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Malayalam:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    background:#1C1C1E;
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    min-height:100vh;
+    font-family:'Noto Sans Malayalam','Segoe UI',sans-serif;
+    gap:14px;
+  }
+  .label{color:rgba(255,255,255,.28);font-size:10px;letter-spacing:3px;
+    text-transform:uppercase;font-family:'Segoe UI',sans-serif;}
+
+  .device{
+    width:400px;height:660px;background:#1B5E20;
+    border-radius:28px;border:7px solid #111;
+    box-shadow:0 24px 64px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.07);
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+  .bar{
+    margin:13px 13px 0;background:#fff;border-radius:10px;
+    padding:9px 6px 9px 14px;display:flex;align-items:center;
+    box-shadow:0 2px 10px rgba(0,0,0,.2);min-height:46px;flex-shrink:0;
+  }
+  #out{
+    flex:1;font-size:17px;color:#1A1A1A;
+    font-family:'Noto Sans Malayalam',sans-serif;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  #out.ph{color:rgba(0,0,0,.3);font-size:13px;font-family:'Segoe UI',sans-serif;}
+  .send{
+    background:#2E7D32;border:none;border-radius:7px;
+    width:34px;height:34px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    margin-left:6px;flex-shrink:0;transition:background .15s;
+  }
+  .send:hover{background:#1B5E20;}
+  .send svg{width:17px;height:17px;fill:#fff;}
+
+  .area{flex:1;position:relative;touch-action:none;}
+  canvas{position:absolute;top:0;left:0;width:100%;height:100%;cursor:crosshair;}
+  .hint{
+    position:absolute;bottom:12px;left:0;right:0;
+    text-align:center;font-size:11px;
+    color:rgba(255,255,255,.38);pointer-events:none;
+    font-family:'Segoe UI',sans-serif;
+  }
+
+  .legend{display:flex;gap:20px;font-size:11px;
+    color:rgba(255,255,255,.45);font-family:'Segoe UI',sans-serif;}
+  .legend span{display:flex;align-items:center;gap:5px;}
+  .dot{width:9px;height:9px;border-radius:50%;}
+  .dot.i{background:#4A4540;} .dot.o{background:#3A3735;}
+  .dot.s{background:#F9A825;}
+</style>
+</head>
+<body>
+<div class="label">Project Mudra Malayalam — Dual Ring · Long-press for Sub-menu</div>
+
+<div class="device">
+  <div class="bar">
+    <span id="out" class="ph">Start typing…</span>
+    <button class="send" id="snd">
+      <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+    </button>
+  </div>
+  <div class="area">
+    <canvas id="c"></canvas>
+    <div class="hint" id="hint">Touch anywhere · Lift to enter · Hold 5s for sub-menu</div>
+  </div>
+</div>
+
+<div class="legend">
+  <span><div class="dot i"></div>Inner — Consonants</span>
+  <span><div class="dot o"></div>Outer — Vowels</span>
+  <span><div class="dot s"></div>Sub-menu active</span>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  ROOT RINGS  (10 segments each, clockwise from top = -90°)
+// ═══════════════════════════════════════════════════════════
+const ROOT_INNER = [
+  { label:'ക',   char:'ക'   },
+  { label:'ച',   char:'ച'   },
+  { label:'ട',   char:'ട'   },
+  { label:'ത',   char:'ത'   },
+  { label:'പ',   char:'പ'   },
+  { label:'യ',   char:'യ'   },
+  { label:'ഷ',   char:'ഷ'   },
+  { label:'റ',   char:'റ'   },
+  { label:'ച്ച', char:'ച്ച' },
+  { label:'ല്ല', char:'ല്ല' },
+];
+
+const ROOT_OUTER = [
+  { label:'അ',   char:'അ'   },
+  { label:'ഇ',   char:'ഇ'   },
+  { label:'ഉ',   char:'ഉ'   },
+  { label:'ഋ',   char:'ഋ'   },
+  { label:'എ',   char:'എ'   },
+  { label:'ഒ',   char:'ഒ'   },
+  { label:'അം',  char:'അം'  },
+  { label:'്',   char:'്'   },
+  { label:'123', char:'1'   },
+  { label:'&',   char:'&'   },
+];
+
+// ═══════════════════════════════════════════════════════════
+//  SUB-MENUS  — keyed by root label
+//  Chars fill from position 0 (top) clockwise.
+//  Unfilled slots = null (shown as dim dash).
+// ═══════════════════════════════════════════════════════════
+const SUB_INNER = {
+  'ക':   ['ക','ഖ','ഗ','ഘ','ങ'],
+  'ച':   ['ച','ഛ','ജ','ഝ','ഞ'],
+  'ട':   ['ട','ഠ','ഡ','ഢ','ണ'],
+  'ത':   ['ത','ഥ','ദ','ധ','ന'],
+  'പ':   ['പ','ഫ','ബ','ഭ','മ'],
+  'യ':   ['യ','ര','ല','വ'],
+  'ഷ':   ['ശ','ഷ','സ','ഹ'],
+  'റ':   ['ള','ഴ','റ'],
+  'ച്ച': ['ക്ക','ച്ച','ട്ട','ത്ത','പ്പ','ന്ന'],
+  'ല്ല': ['ല്ല','ള്ള','മ്മ','ർ','ൽ','ൾ'],
+};
+const SUB_OUTER = {
+  'അ':   ['അ','ആ'],
+  'ഇ':   ['ഇ','ഈ'],
+  'ഉ':   ['ഉ','ഊ'],
+  'ഋ':   ['ഋ','ൠ'],
+  'എ':   ['എ','ഏ','ഐ'],
+  'ഒ':   ['ഒ','ഓ','ഔ'],
+  'അം':  ['ം','ഃ','്'],
+  '്':   ['ൺ','ൻ','ർ','ൽ','ൾ'],
+  '123': ['൧','൨','൩','൪','൫','൬','൭','൮','൯','൦'],
+  '&':   ['&','@','#','!','?','.',',','"',"'",'_'],
+};
+
+// Build a 10-slot ring array from a sub-menu char list
+function buildSubSegs(chars) {
+  return Array.from({ length: 10 }, (_, i) => {
+    const c = chars[i];
+    return c ? { label: c, char: c } : null;
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  VISUAL CONFIG
+// ═══════════════════════════════════════════════════════════
+const N      = 10;
+const SWEEP  = 36;
+const R_OUT  = 148;     // outer wheel radius (unscaled px)
+const F_SPLIT = 0.50;   // inner/outer ring boundary fraction
+const F_DEAD  = 0.20;   // center dead-zone fraction
+const LP_MS   = 5000;   // long-press duration
+
+const C_OUTER_BASE  = '#3A3735';
+const C_INNER_BASE  = '#2D2B29';
+const C_OUTER_HI    = '#90CAF9';
+const C_INNER_HI    = '#80DEEA';
+const C_SUB_BASE    = '#4A3B00';   // amber tint for sub-menu ring
+const C_SUB_HI      = '#FFD54F';   // yellow highlight in sub-menu
+const C_HI_TEXT     = '#0D2137';
+const C_SUB_HI_TEXT = '#1A0A00';
+const C_OUTER_TEXT  = 'rgba(255,255,255,0.90)';
+const C_INNER_TEXT  = 'rgba(255,255,255,0.72)';
+const C_SUB_TEXT    = 'rgba(255,220,100,0.92)';
+const C_NULL_TEXT   = 'rgba(255,255,255,0.18)';
+const C_DIVIDER     = 'rgba(255,255,255,0.14)';
+const C_SPLIT_LINE  = 'rgba(255,255,255,0.20)';
+const C_LP_PROGRESS = '#FFD54F';   // long-press arc fill
+const C_LP_TRACK    = 'rgba(255,213,79,0.20)';
+const C_CENTER      = '#FFFFFF';
+
+// ═══════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════
+const cv     = document.getElementById('c');
+const ctx    = cv.getContext('2d');
+const outEl  = document.getElementById('out');
+const hintEl = document.getElementById('hint');
+
+let st = {
+  visible: false, cx: 0, cy: 0, scale: 0,
+  ring: null, idx: -1,       // currently hovered ring + segment
+  text: '',
+
+  // Sub-menu state per ring
+  innerSub: false,           // is inner ring in sub-menu mode?
+  outerSub: false,
+  innerSegs: ROOT_INNER,     // current segments for inner ring
+  outerSegs: ROOT_OUTER,
+
+  // Rotation offsets — set on first finger entry into each ring
+  // so segment 0 (ക / അ) always appears under the finger
+  innerRot: -90,
+  outerRot: -90,
+
+  // Long-press tracking
+  lpRing: null, lpIdx: -1,
+  lpStart: 0, lpFiring: false,
+};
+
+// Per-gesture flags: has the rotation been snapped yet for each ring?
+let innerRotSet = false;
+let outerRotSet = false;
+
+let targetScale = 0, rafId = null;
+let isDown = false;
+let lpTimer = null, lpAnimId = null;
+// 0 = inside ring, 1 = beyond right (space), -1 = beyond left (delete)
+let beyondDir = 0;
+
+// ═══════════════════════════════════════════════════════════
+//  CANVAS RESIZE
+// ═══════════════════════════════════════════════════════════
+function resize() {
+  const a = cv.parentElement;
+  cv.width = a.clientWidth; cv.height = a.clientHeight; draw();
+}
+window.addEventListener('resize', resize); resize();
+
+// ═══════════════════════════════════════════════════════════
+//  ANIMATION LOOP
+// ═══════════════════════════════════════════════════════════
+function scheduleAnim() {
+  if (rafId) cancelAnimationFrame(rafId);
+  rafId = requestAnimationFrame(() => {
+    st.scale += (targetScale - st.scale) * 0.20;
+    const stillAnimating = Math.abs(targetScale - st.scale) > 0.003;
+    const lpInProgress   = st.lpFiring && lpTimer !== null;
+    draw();
+    if (stillAnimating || lpInProgress) scheduleAnim();
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SHOW / HIDE WHEEL
+// ═══════════════════════════════════════════════════════════
+function showWheel(x, y) {
+  st.cx = x; st.cy = y; st.visible = true;
+  st.ring = null; st.idx = -1;
+  targetScale = 1;
+  hintEl.style.display = 'none';
+  scheduleAnim();
+}
+function hideWheel() {
+  st.visible = false; targetScale = 0;
+  st.ring = null; st.idx = -1;
+  beyondDir = 0;
+  cancelLp();
+  scheduleAnim();
+  if (!st.text) hintEl.style.display = '';
+}
+function resetRings() {
+  st.innerSub = false; st.innerSegs = ROOT_INNER;
+  st.outerSub = false; st.outerSegs = ROOT_OUTER;
+  st.innerRot = -90;   st.outerRot  = -90;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  HIT TEST
+// ═══════════════════════════════════════════════════════════
+function hitTest(mx, my) {
+  const dx = mx - st.cx, dy = my - st.cy;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const R      = R_OUT * st.scale;
+  const Rsplit = R * F_SPLIT;
+  const Rdead  = R * F_DEAD;
+
+  if (dist < Rdead || dist > R) return { ring: null, idx: -1 };
+
+  let deg = Math.atan2(dy, dx) * (180 / Math.PI);
+  if (deg < 0) deg += 360;
+
+  const ring  = dist < Rsplit ? 'inner' : 'outer';
+  const rot   = ring === 'inner' ? st.innerRot : st.outerRot;
+  // Compute angle relative to this ring's rotation so index 0 = landing key
+  const logical = ((deg - rot) % 360 + 360) % 360;
+  const idx     = Math.floor(logical / SWEEP) % N;
+  return { ring, idx };
+}
+
+// ═══════════════════════════════════════════════════════════
+//  LONG-PRESS
+// ═══════════════════════════════════════════════════════════
+function startLp(ring, idx) {
+  cancelLp();
+  st.lpRing = ring; st.lpIdx = idx;
+  st.lpStart = Date.now(); st.lpFiring = true;
+  scheduleAnim();   // keeps draw running for progress arc
+  lpTimer = setTimeout(() => fireLp(ring, idx), LP_MS);
+}
+function cancelLp() {
+  if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; }
+  st.lpFiring = false; st.lpRing = null; st.lpIdx = -1;
+}
+function fireLp(ring, idx) {
+  lpTimer = null; st.lpFiring = false;
+
+  const segs = ring === 'inner' ? st.innerSegs : st.outerSegs;
+  const key  = segs[idx]?.label;
+  if (!key) return;
+
+  const subMap = ring === 'inner' ? SUB_INNER : SUB_OUTER;
+  const chars  = subMap[key];
+  if (!chars) return;
+
+  // Rotate ring so sub[0] lands exactly where the long-pressed key was.
+  // Key i starts at (rot + i*SWEEP), so advance rotation by i*SWEEP.
+  if (ring === 'inner') {
+    st.innerRot = ((st.innerRot + idx * SWEEP) % 360 + 360) % 360;
+  } else {
+    st.outerRot = ((st.outerRot + idx * SWEEP) % 360 + 360) % 360;
+  }
+
+  const built = buildSubSegs(chars);
+  if (ring === 'inner') { st.innerSub = true; st.innerSegs = built; }
+  else                  { st.outerSub = true; st.outerSegs = built; }
+
+  st.lpRing = null; st.lpIdx = -1;
+  // Reset highlight — next pointermove will re-evaluate with new rotation
+  st.ring = null; st.idx = -1;
+  draw();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  TEXT COMMIT
+// ═══════════════════════════════════════════════════════════
+function commitChar(str) {
+  st.text += str;
+  refreshOut();
+  // Auto-restore sub-menu ring after commit
+  if (st.innerSub) { st.innerSub = false; st.innerSegs = ROOT_INNER; }
+  if (st.outerSub) { st.outerSub = false; st.outerSegs = ROOT_OUTER; }
+}
+function deleteLast() {
+  st.text = [...st.text].slice(0, -1).join('');
+  refreshOut();
+}
+function refreshOut() {
+  if (st.text) {
+    outEl.textContent = st.text; outEl.classList.remove('ph');
+  } else {
+    outEl.textContent = 'Start typing…'; outEl.classList.add('ph');
+  }
+}
+function commitHighlighted() {
+  if (!st.ring || st.idx < 0) return;
+  const segs = st.ring === 'inner' ? st.innerSegs : st.outerSegs;
+  const seg  = segs[st.idx];
+  if (seg?.char) commitChar(seg.char);
+}
+
+document.getElementById('snd').addEventListener('click', () => {
+  if (st.text.trim()) {
+    st.text = ''; refreshOut();
+    hintEl.style.color = 'rgba(255,255,255,.75)';
+    hintEl.style.display = '';
+    hintEl.textContent = '✓ Message sent';
+    setTimeout(() => {
+      hintEl.textContent = 'Touch anywhere · Lift to enter · Hold 5s for sub-menu';
+      hintEl.style.color = 'rgba(255,255,255,.38)';
+    }, 1800);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+//  POINTER EVENTS
+// ═══════════════════════════════════════════════════════════
+cv.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  isDown = true;
+  beyondDir = 0;
+  innerRotSet = false; outerRotSet = false;
+  resetRings();
+  showWheel(e.offsetX, e.offsetY);
+});
+
+cv.addEventListener('pointermove', e => {
+  if (!isDown || !st.visible) return;
+
+  // Determine which ring the finger is in (by distance only, rotation-independent)
+  const dx = e.offsetX - st.cx, dy = e.offsetY - st.cy;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const R      = R_OUT * st.scale;
+  const Rsplit = R * F_SPLIT;
+  const Rdead  = R * F_DEAD;
+  let rawDeg = Math.atan2(dy, dx) * (180 / Math.PI);
+  if (rawDeg < 0) rawDeg += 360;
+
+  // Snap rotation on first entry into each ring so index 0 is under the finger
+  if (dist >= Rdead && dist < Rsplit && !innerRotSet) {
+    st.innerRot = rawDeg;
+    innerRotSet = true;
+  }
+  if (dist >= Rsplit && dist <= R && !outerRotSet) {
+    st.outerRot = rawDeg;
+    outerRotSet = true;
+  }
+
+  // Track whether finger has gone beyond the outer ring (R already declared above)
+  const newBeyond = dist > R ? (dx > 0 ? 1 : -1) : 0;
+  if (newBeyond !== beyondDir) { beyondDir = newBeyond; draw(); }
+
+  const { ring, idx } = hitTest(e.offsetX, e.offsetY);
+
+  // Cancel LP if moved beyond ring or to a different segment
+  if (beyondDir !== 0) {
+    cancelLp();
+    if (ring !== st.ring || idx !== st.idx) { st.ring = null; st.idx = -1; draw(); }
+    return;
+  }
+
+  if (ring !== st.lpRing || idx !== st.lpIdx) {
+    cancelLp();
+    if (ring && idx >= 0) startLp(ring, idx);
+  }
+
+  if (ring !== st.ring || idx !== st.idx) {
+    st.ring = ring; st.idx = idx; draw();
+  }
+});
+
+cv.addEventListener('pointerup', e => {
+  if (!isDown) return;
+  isDown = false;
+  cancelLp();
+
+  const dx   = e.offsetX - st.cx;
+  const dy   = e.offsetY - st.cy;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const R    = R_OUT * st.scale;
+
+  if (dist > R) {
+    // Beyond outer ring → space (right) or backspace (left)
+    if (dx > 0) commitChar(' ');
+    else        deleteLast();
+  } else if (dist < R * F_DEAD) {
+    // Center tap → reset sub-menus
+    if (st.innerSub || st.outerSub) resetRings();
+  } else {
+    // Inside rings → commit highlighted character
+    commitHighlighted();
+  }
+
+  hideWheel();
+});
+
+cv.addEventListener('pointerleave', () => {
+  if (isDown) { isDown = false; cancelLp(); hideWheel(); }
+});
+
+// ═══════════════════════════════════════════════════════════
+//  DRAW — annular sector helper
+// ═══════════════════════════════════════════════════════════
+function annulus(cx, cy, r1, r2, sDeg, sweepDeg) {
+  const sa = sDeg * Math.PI / 180;
+  const ea = (sDeg + sweepDeg) * Math.PI / 180;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r2, sa, ea, false);
+  ctx.arc(cx, cy, r1, ea, sa, true);
+  ctx.closePath();
+}
+
+const ML_RE  = /[\u0D00-\u0D7F]/;
+const ML_FN  = px => `700 ${Math.max(px,8)}px "Noto Sans Malayalam",sans-serif`;
+const SYS_FN = px => `700 ${Math.max(px,8)}px "Segoe UI",sans-serif`;
+
+function segFont(label, px) {
+  return ML_RE.test(label) ? ML_FN(px) : SYS_FN(px);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  MAIN DRAW
+// ═══════════════════════════════════════════════════════════
+function draw() {
+  const W = cv.width, H = cv.height;
+  ctx.clearRect(0, 0, W, H);
+  if (!st.visible && st.scale < 0.01) return;
+
+  const s      = st.scale;
+  const cx     = st.cx, cy = st.cy;
+  const R      = R_OUT * s;
+  const Rsplit = R * F_SPLIT;
+  const Rdead  = R * F_DEAD;
+
+  // ── OUTER RING segments ───────────────────────────────
+  for (let i = 0; i < N; i++) {
+    const sDeg = st.outerRot + i * SWEEP;
+    const isHi = st.ring === 'outer' && st.idx === i;
+    const seg  = st.outerSegs[i];
+    const isSub = st.outerSub;
+
+    annulus(cx, cy, Rsplit, R, sDeg, SWEEP);
+    ctx.fillStyle = !seg     ? 'rgba(40,35,32,0.6)'
+                  : isHi     ? (isSub ? C_SUB_HI : C_OUTER_HI)
+                  : isSub    ? C_SUB_BASE
+                  :            C_OUTER_BASE;
+    ctx.fill();
+  }
+
+  // ── INNER RING segments ───────────────────────────────
+  for (let i = 0; i < N; i++) {
+    const sDeg = st.innerRot + i * SWEEP;
+    const isHi = st.ring === 'inner' && st.idx === i;
+    const seg  = st.innerSegs[i];
+    const isSub = st.innerSub;
+
+    annulus(cx, cy, Rdead, Rsplit, sDeg, SWEEP);
+    ctx.fillStyle = !seg     ? 'rgba(30,28,26,0.6)'
+                  : isHi     ? (isSub ? C_SUB_HI : C_INNER_HI)
+                  : isSub    ? C_SUB_BASE
+                  :            C_INNER_BASE;
+    ctx.fill();
+  }
+
+  // ── LONG-PRESS PROGRESS ARC ───────────────────────────
+  if (st.lpFiring && st.lpIdx >= 0 && st.lpStart > 0) {
+    const elapsed  = Date.now() - st.lpStart;
+    const progress = Math.min(elapsed / LP_MS, 1);
+    const rot      = st.lpRing === 'inner' ? st.innerRot : st.outerRot;
+    const sDeg     = rot + st.lpIdx * SWEEP;
+    const pSweep   = SWEEP * progress;
+    const r1 = st.lpRing === 'inner' ? Rdead  : Rsplit;
+    const r2 = st.lpRing === 'inner' ? Rsplit : R;
+
+    // Track
+    annulus(cx, cy, r1, r2, sDeg, SWEEP);
+    ctx.fillStyle = C_LP_TRACK; ctx.fill();
+
+    // Fill
+    if (pSweep > 0) {
+      annulus(cx, cy, r1, r2, sDeg, pSweep);
+      ctx.fillStyle = C_LP_PROGRESS;
+      ctx.globalAlpha = 0.55;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // Label "hold…"
+    const midDeg = sDeg + SWEEP / 2;
+    const midR   = r1 + (r2 - r1) * 0.5;
+    const lx = cx + Math.cos(midDeg * Math.PI/180) * midR;
+    const ly = cy + Math.sin(midDeg * Math.PI/180) * midR;
+    const secLeft = Math.ceil((LP_MS - elapsed) / 1000);
+    ctx.save();
+    ctx.font = SYS_FN(R * 0.08);
+    ctx.fillStyle = 'rgba(255,220,80,0.9)';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(secLeft + 's', lx, ly);
+    ctx.restore();
+  }
+
+  // ── DIVIDER LINES — use inner ring rotation (both rings share the same N) ──
+  ctx.strokeStyle = C_DIVIDER; ctx.lineWidth = 1.2;
+  for (let i = 0; i < N; i++) {
+    const rad = (st.innerRot + i * SWEEP) * Math.PI / 180;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(rad)*Rdead, cy + Math.sin(rad)*Rdead);
+    ctx.lineTo(cx + Math.cos(rad)*Rsplit, cy + Math.sin(rad)*Rsplit);
+    ctx.stroke();
+  }
+  for (let i = 0; i < N; i++) {
+    const rad = (st.outerRot + i * SWEEP) * Math.PI / 180;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(rad)*Rsplit, cy + Math.sin(rad)*Rsplit);
+    ctx.lineTo(cx + Math.cos(rad)*R,      cy + Math.sin(rad)*R);
+    ctx.stroke();
+  }
+
+  // ── RING-SPLIT CIRCLE ─────────────────────────────────
+  ctx.beginPath(); ctx.arc(cx, cy, Rsplit, 0, Math.PI*2);
+  ctx.strokeStyle = C_SPLIT_LINE; ctx.lineWidth = 1.3; ctx.stroke();
+
+  // ── OUTER EDGE CIRCLE ─────────────────────────────────
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI*2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.09)'; ctx.lineWidth = 1.5; ctx.stroke();
+
+  // ── OUTER RING LABELS ─────────────────────────────────
+  const LR_o = Rsplit + (R - Rsplit) * 0.52;
+  for (let i = 0; i < N; i++) {
+    const seg = st.outerSegs[i];
+    if (!seg) {
+      // Empty slot — dim dash
+      const midD = (st.outerRot + i*SWEEP + SWEEP/2) * Math.PI/180;
+      const lx = cx + Math.cos(midD)*LR_o, ly = cy + Math.sin(midD)*LR_o;
+      ctx.save();
+      ctx.font = SYS_FN(R*0.08); ctx.fillStyle = C_NULL_TEXT;
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('–', lx, ly); ctx.restore();
+      continue;
+    }
+    const midD  = (st.outerRot + i*SWEEP + SWEEP/2) * Math.PI/180;
+    const lx    = cx + Math.cos(midD)*LR_o;
+    const ly    = cy + Math.sin(midD)*LR_o;
+    const isHi  = st.ring === 'outer' && st.idx === i;
+    const isSub = st.outerSub;
+    const len   = [...seg.label].length;
+    const fsPx  = R * (len <= 1 ? 0.150 : len <= 2 ? 0.120 : 0.090);
+
+    ctx.save();
+    ctx.font         = segFont(seg.label, fsPx);
+    ctx.fillStyle    = isHi ? (isSub ? C_SUB_HI_TEXT : C_HI_TEXT)
+                            : isSub ? C_SUB_TEXT : C_OUTER_TEXT;
+    ctx.textAlign    = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(seg.label, lx, ly);
+    ctx.restore();
+  }
+
+  // ── INNER RING LABELS ─────────────────────────────────
+  const LR_i = Rdead + (Rsplit - Rdead) * 0.52;
+  for (let i = 0; i < N; i++) {
+    const seg = st.innerSegs[i];
+    if (!seg) {
+      const midD = (st.innerRot + i*SWEEP + SWEEP/2) * Math.PI/180;
+      const lx = cx + Math.cos(midD)*LR_i, ly = cy + Math.sin(midD)*LR_i;
+      ctx.save();
+      ctx.font = SYS_FN(R*0.07); ctx.fillStyle = C_NULL_TEXT;
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('–', lx, ly); ctx.restore();
+      continue;
+    }
+    const midD  = (st.innerRot + i*SWEEP + SWEEP/2) * Math.PI/180;
+    const lx    = cx + Math.cos(midD)*LR_i;
+    const ly    = cy + Math.sin(midD)*LR_i;
+    const isHi  = st.ring === 'inner' && st.idx === i;
+    const isSub = st.innerSub;
+    const len   = [...seg.label].length;
+    const fsPx  = R * (len <= 1 ? 0.115 : len <= 2 ? 0.090 : 0.072);
+
+    ctx.save();
+    ctx.font         = segFont(seg.label, fsPx);
+    ctx.fillStyle    = isHi ? (isSub ? C_SUB_HI_TEXT : C_HI_TEXT)
+                            : isSub ? C_SUB_TEXT : C_INNER_TEXT;
+    ctx.textAlign    = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(seg.label, lx, ly);
+    ctx.restore();
+  }
+
+  // ── HIGHLIGHT GLOW OUTLINE ────────────────────────────
+  if (st.ring && st.idx >= 0) {
+    const rot    = st.ring === 'inner' ? st.innerRot : st.outerRot;
+    const sDeg   = rot + st.idx * SWEEP;
+    const sa     = sDeg * Math.PI/180;
+    const ea     = (sDeg + SWEEP) * Math.PI/180;
+    const r1     = st.ring === 'inner' ? Rdead  : Rsplit;
+    const r2     = st.ring === 'inner' ? Rsplit : R;
+    const isSub  = st.ring === 'inner' ? st.innerSub : st.outerSub;
+    const hiCol  = isSub ? C_SUB_HI
+                : st.ring === 'inner' ? C_INNER_HI : C_OUTER_HI;
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, r2-1, sa, ea);
+    ctx.arc(cx, cy, r1+1, ea, sa, true);
+    ctx.closePath();
+    ctx.strokeStyle = hiCol; ctx.lineWidth = 2.5; ctx.stroke();
+  }
+
+  // ── BEYOND-RING ACTION HINT ───────────────────────────
+  if (beyondDir !== 0 && s > 0.3) {
+    const label = beyondDir > 0 ? 'SPC' : '⌫';
+    const col   = beyondDir > 0 ? 'rgba(255,167,38,0.85)' : 'rgba(239,83,80,0.85)';
+    const tx    = cx + beyondDir * R * 1.28;
+    ctx.save();
+    ctx.font = SYS_FN(R * 0.11);
+    ctx.fillStyle = col;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 4;
+    ctx.fillText(label, tx, cy);
+    ctx.restore();
+  }
+
+  // ── CENTER CIRCLE ─────────────────────────────────────
+  ctx.beginPath(); ctx.arc(cx, cy, Rdead, 0, Math.PI*2);
+  ctx.fillStyle = C_CENTER; ctx.fill();
+}
+</script>
+</body>
+</html>

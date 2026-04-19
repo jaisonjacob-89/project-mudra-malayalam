@@ -1,0 +1,18 @@
+# Android
+*.iml
+.gradle/
+local.properties
+.idea/
+.DS_Store
+build/
+app/build/
+captures/
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# Generated
+Malayalam_Radial_Keyboard_Layout.xlsx
+__pycache__/
+*.pyc
