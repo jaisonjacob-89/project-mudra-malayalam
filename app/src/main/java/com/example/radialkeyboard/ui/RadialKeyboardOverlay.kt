@@ -61,7 +61,7 @@ private const val N           = 10
 private const val SWEEP_DEG   = 36f
 private const val F_SPLIT     = 0.50f
 private const val F_DEAD      = 0.20f
-private const val LP_MS       = 5000L
+private const val LP_MS       = 2000L
 private const val WHEEL_ALPHA = 0.93f
 
 // ─── Composable ──────────────────────────────────────────────────────────────
