@@ -376,32 +376,16 @@ document.getElementById('snd').addEventListener('click', () => {
 });
 
 // ═══════════════════════════════════════════════════════════
-//  TEXT-TO-SPEECH
+//  TEXT-TO-SPEECH  (Google Translate audio — no install needed)
 // ═══════════════════════════════════════════════════════════
-let mlVoice = null;
-function loadVoices() {
-  const voices = window.speechSynthesis.getVoices();
-  mlVoice = voices.find(v => v.lang === 'ml-IN' || v.lang === 'ml')
-         || voices.find(v => v.lang.startsWith('ml'))
-         || null;
-}
-if (window.speechSynthesis) {
-  loadVoices();
-  window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
-}
-
+let ttsAudio = null;
 function speak(label) {
-  if (!label || label === '–' || !window.speechSynthesis) return;
-  // Chrome bug: cancel() + immediate speak() can stall — use setTimeout
-  window.speechSynthesis.cancel();
-  setTimeout(() => {
-    const utt = new SpeechSynthesisUtterance(label);
-    if (mlVoice) utt.voice = mlVoice;
-    utt.lang  = 'ml-IN';
-    utt.rate  = 1.0;
-    utt.pitch = 1.0;
-    window.speechSynthesis.speak(utt);
-  }, 50);
+  if (!label || label === '–') return;
+  if (ttsAudio) { ttsAudio.pause(); ttsAudio = null; }
+  const url = 'https://translate.google.com/translate_tts?ie=UTF-8&tl=ml&client=tw-ob&q='
+            + encodeURIComponent(label);
+  ttsAudio = new Audio(url);
+  ttsAudio.play().catch(() => {});
 }
 
 // ═══════════════════════════════════════════════════════════
