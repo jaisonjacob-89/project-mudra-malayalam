@@ -329,6 +329,8 @@ function fireLp(ring, idx) {
   st.lpRing = null; st.lpIdx = -1;
   // Reset highlight — next pointermove will re-evaluate with new rotation
   st.ring = null; st.idx = -1;
+  // Announce sub-menu opened
+  speak(built[0]?.label);
   draw();
 }
 
@@ -372,6 +374,19 @@ document.getElementById('snd').addEventListener('click', () => {
     }, 1800);
   }
 });
+
+// ═══════════════════════════════════════════════════════════
+//  TEXT-TO-SPEECH
+// ═══════════════════════════════════════════════════════════
+function speak(label) {
+  if (!label || label === '–' || !window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(label);
+  utt.lang = 'ml-IN';
+  utt.rate = 1.1;
+  utt.pitch = 1.0;
+  window.speechSynthesis.speak(utt);
+}
 
 // ═══════════════════════════════════════════════════════════
 //  POINTER EVENTS
@@ -427,6 +442,11 @@ cv.addEventListener('pointermove', e => {
 
   if (ring !== st.ring || idx !== st.idx) {
     st.ring = ring; st.idx = idx; draw();
+    // Speak the label of the newly entered segment
+    if (ring && idx >= 0) {
+      const segs = ring === 'inner' ? st.innerSegs : st.outerSegs;
+      speak(segs[idx]?.label);
+    }
   }
 });
 
