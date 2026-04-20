@@ -376,16 +376,42 @@ document.getElementById('snd').addEventListener('click', () => {
 });
 
 // ═══════════════════════════════════════════════════════════
-//  TEXT-TO-SPEECH  (Google Translate audio — no install needed)
+//  TEXT-TO-SPEECH
 // ═══════════════════════════════════════════════════════════
-let ttsAudio = null;
+const ttsAudio = new Audio();
+ttsAudio.crossOrigin = 'anonymous';
+let mlVoice = null;
+let ttsTimer = null;
+
+function initVoices() {
+  const vv = window.speechSynthesis ? speechSynthesis.getVoices() : [];
+  mlVoice = vv.find(v => /^ml/i.test(v.lang)) || null;
+}
+if (window.speechSynthesis) {
+  initVoices();
+  speechSynthesis.onvoiceschanged = initVoices;
+}
+
 function speak(label) {
   if (!label || label === '–') return;
-  if (ttsAudio) { ttsAudio.pause(); ttsAudio = null; }
-  const url = 'https://translate.google.com/translate_tts?ie=UTF-8&tl=ml&client=tw-ob&q='
-            + encodeURIComponent(label);
-  ttsAudio = new Audio(url);
-  ttsAudio.play().catch(() => {});
+  clearTimeout(ttsTimer);
+  ttsTimer = setTimeout(() => {
+    if (mlVoice) {
+      speechSynthesis.cancel();
+      setTimeout(() => {
+        const utt = new SpeechSynthesisUtterance(label);
+        utt.voice = mlVoice; utt.lang = 'ml-IN'; utt.rate = 0.9;
+        speechSynthesis.speak(utt);
+      }, 60);
+    } else {
+      // Google Translate TTS — works on GitHub Pages / locally
+      ttsAudio.pause();
+      ttsAudio.src = 'https://translate.google.com/translate_tts?ie=UTF-8&tl=ml&client=tw-ob&q='
+                   + encodeURIComponent(label);
+      ttsAudio.load();
+      ttsAudio.play().catch(() => {});
+    }
+  }, 80);
 }
 
 // ═══════════════════════════════════════════════════════════
