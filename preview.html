@@ -378,14 +378,30 @@ document.getElementById('snd').addEventListener('click', () => {
 // ═══════════════════════════════════════════════════════════
 //  TEXT-TO-SPEECH
 // ═══════════════════════════════════════════════════════════
+let mlVoice = null;
+function loadVoices() {
+  const voices = window.speechSynthesis.getVoices();
+  mlVoice = voices.find(v => v.lang === 'ml-IN' || v.lang === 'ml')
+         || voices.find(v => v.lang.startsWith('ml'))
+         || null;
+}
+if (window.speechSynthesis) {
+  loadVoices();
+  window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
+}
+
 function speak(label) {
   if (!label || label === '–' || !window.speechSynthesis) return;
+  // Chrome bug: cancel() + immediate speak() can stall — use setTimeout
   window.speechSynthesis.cancel();
-  const utt = new SpeechSynthesisUtterance(label);
-  utt.lang = 'ml-IN';
-  utt.rate = 1.1;
-  utt.pitch = 1.0;
-  window.speechSynthesis.speak(utt);
+  setTimeout(() => {
+    const utt = new SpeechSynthesisUtterance(label);
+    if (mlVoice) utt.voice = mlVoice;
+    utt.lang  = 'ml-IN';
+    utt.rate  = 1.0;
+    utt.pitch = 1.0;
+    window.speechSynthesis.speak(utt);
+  }, 50);
 }
 
 // ═══════════════════════════════════════════════════════════
