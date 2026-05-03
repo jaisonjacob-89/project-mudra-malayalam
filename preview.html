@@ -439,15 +439,14 @@ function lastGrapheme(text) {
 
 function composeText(current, newStr) {
   if (!newStr) return current;
-  if (newStr.length === 1 || [...newStr].length === 1) {
-    const ch = [...newStr][0];
-    if (MALAYALAM_VOWELS.has(ch)) {
-      const lastG = lastGrapheme(current);
-      if (isBareConsonant(lastG)) {
-        const sign = VOWEL_SIGN[ch];
-        const base = current.slice(0, current.length - lastG.length);
-        return base + lastG + sign;   // sign='' for inherent 'a'
-      }
+  const firstCh = [...newStr][0];
+  if (MALAYALAM_VOWELS.has(firstCh)) {
+    const lastG = lastGrapheme(current);
+    if (isBareConsonant(lastG)) {
+      const sign = VOWEL_SIGN[firstCh];
+      const base = current.slice(0, current.length - lastG.length);
+      const tail = newStr.slice(firstCh.length); // e.g. 'ം' from 'അം'
+      return base + lastG + sign + tail; // sign='' for inherent 'a' (e.g. ള+അം → ളം)
     }
   }
   return current + newStr;

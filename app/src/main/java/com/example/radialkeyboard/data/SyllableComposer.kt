@@ -70,21 +70,23 @@ object SyllableComposer {
     /**
      * Returns the new buffer string after appending [newChars] to [current],
      * applying vowel-sign fusion where applicable.
+     *
+     * Works for both single vowels ("ആ" → ാ) and vowel-prefixed strings
+     * ("അം" → ം, because 'അ' is the inherent vowel and ം follows).
      */
     fun compose(current: String, newChars: String): String {
         if (newChars.isEmpty()) return current
 
-        // Smart compose only applies to a single incoming vowel character
-        if (newChars.length == 1) {
-            val ch = newChars[0]
-            if (ch in MALAYALAM_VOWELS) {
-                val lastG = lastGrapheme(current)
-                if (isBareConsonant(lastG)) {
-                    val sign = VOWEL_SIGN[ch]!!
-                    val base = dropLastGrapheme(current)
-                    // 'അ' (inherent a) — leave consonant unchanged
-                    return if (sign.isEmpty()) base + lastG else base + lastG + sign
-                }
+        val firstChar = newChars[0]
+        if (firstChar in MALAYALAM_VOWELS) {
+            val lastG = lastGrapheme(current)
+            if (isBareConsonant(lastG)) {
+                val sign = VOWEL_SIGN[firstChar]!!
+                val base = dropLastGrapheme(current)
+                val tail = newChars.drop(1)   // e.g. "ം" from "അം"
+                // inherent 'a': no vowel sign, just append tail (e.g. ം)
+                return if (sign.isEmpty()) base + lastG + tail
+                       else base + lastG + sign + tail
             }
         }
 
