@@ -54,6 +54,28 @@
     font-family:'Segoe UI',sans-serif;
   }
 
+  /* Neil: suggestion bar */
+  .sug-bar{
+    display:flex;gap:8px;padding:6px 12px;
+    background:rgba(0,0,0,.18);flex-shrink:0;
+    min-height:38px;align-items:center;overflow-x:auto;
+  }
+  .sug-bar:empty::after{
+    content:'Start typing for suggestions…';
+    font-size:11px;color:rgba(255,255,255,.25);
+    font-family:'Segoe UI',sans-serif;
+  }
+  .sug-chip{
+    background:rgba(255,255,255,.12);color:rgba(255,255,255,.9);
+    border:1px solid rgba(255,255,255,.2);border-radius:16px;
+    padding:3px 13px;
+    font-family:'Noto Sans Malayalam','Segoe UI',sans-serif;
+    font-size:14px;cursor:pointer;white-space:nowrap;
+    flex-shrink:0;transition:background .15s,color .15s;
+  }
+  .sug-chip:hover{background:rgba(255,255,255,.22);}
+  .sug-chip:active{background:#FFD54F;color:#1A0A00;border-color:#FFD54F;}
+
   .legend{display:flex;gap:20px;font-size:11px;
     color:rgba(255,255,255,.45);font-family:'Segoe UI',sans-serif;}
   .legend span{display:flex;align-items:center;gap:5px;}
@@ -72,6 +94,7 @@
       <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
     </button>
   </div>
+  <div class="sug-bar" id="sug"></div>
   <div class="area">
     <canvas id="c"></canvas>
     <div class="hint" id="hint">Touch anywhere · Lift to enter · Hold 5s for sub-menu</div>
@@ -335,6 +358,96 @@ function fireLp(ring, idx) {
 }
 
 // ═══════════════════════════════════════════════════════════
+//  BUZZ: WORD PREDICTION ENGINE
+// ═══════════════════════════════════════════════════════════
+const ML_WORDS = [
+  // ക family
+  'കാണുക','കാര്യം','കാലം','കാടൻ','കാണൽ',
+  'കിട്ടി','കിടക്ക',
+  'കൂടെ','കൂടി','കൂടുതൽ',
+  'കൃഷി','കൃത്യം',
+  'കേരളം','കേൾക്കൂ','കേസ്',
+  'കൊള്ളാം','കൊണ്ടുവരൂ',
+  'കോടതി',
+  // ന family
+  'നന്ദി','നന്മ',
+  'നാളെ','നാടൻ','നാം',
+  'നിങ്ങൾ','നിന്ന്',
+  'നല്ലത്','നല്ലൊരു',
+  // ത family
+  'തന്നെ','തരൂ','തരുക',
+  'തിരിച്ച്',
+  'തേൻ','തേടൂ',
+  // പ family
+  'പോകുക','പോലും','പോരും',
+  'പറഞ്ഞ്','പറയൂ','പറക',
+  'പേര്','പേരിൽ',
+  'പുതിയ',
+  // വ family
+  'വരൂ','വരിക','വരുക','വരും',
+  'വഴി','വഴിയിൽ',
+  'വീട്','വീടിൽ',
+  'വേണം','വേണ്ടത്',
+  // മ family
+  'മലയാളം','മലയാളി',
+  'മനസ്സ്','മനസ്',
+  'മതി','മതിയോ',
+  // ച family
+  'ചെറിയ','ചെറുത്','ചെയ്യൂ',
+  'ചോദ്യം','ചോദിക്കൂ',
+  'ചേർക്കൂ',
+  // ര family
+  'രണ്ട്','രണ്ടും',
+  // യ family
+  'യാത്ര','യാത്രയിൽ',
+  // vowel-initial words
+  'അവൻ','അവൾ','അവർ','അവിടെ',
+  'അത്','അതിൽ','അങ്ങനെ','അറിയൂ',
+  'ഇന്ന്','ഇന്നലെ','ഇന്നും',
+  'ഇത്','ഇതിൽ','ഇവിടെ','ഇപ്പോൾ',
+  'ഉണ്ട്','ഉണ്ടോ',
+  'ഒന്ന്','ഒന്നും',
+  'ഞാൻ','ഞങ്ങൾ',
+];
+
+const segmenter = new Intl.Segmenter('ml', { granularity: 'grapheme' });
+const sugEl = document.getElementById('sug');
+
+function currentPrefix(text) {
+  if (!text) return '';
+  const lastSpace = text.lastIndexOf(' ');
+  return lastSpace >= 0 ? text.slice(lastSpace + 1) : text;
+}
+
+function prefixSearch(prefix, n = 3) {
+  if (!prefix) return [];
+  return ML_WORDS.filter(w => w.startsWith(prefix) && w.length > prefix.length).slice(0, n);
+}
+
+function acceptSuggestion(word) {
+  const lastSpace = st.text.lastIndexOf(' ');
+  st.text = (lastSpace >= 0 ? st.text.slice(0, lastSpace + 1) : '') + word + ' ';
+  refreshOut();
+  renderSuggestions([]);
+}
+
+function renderSuggestions(words) {
+  sugEl.innerHTML = '';
+  words.forEach(w => {
+    const chip = document.createElement('button');
+    chip.className = 'sug-chip';
+    chip.textContent = w;
+    chip.addEventListener('pointerdown', e => { e.stopPropagation(); acceptSuggestion(w); });
+    sugEl.appendChild(chip);
+  });
+}
+
+function updateSuggestions() {
+  const prefix = currentPrefix(st.text);
+  renderSuggestions(prefixSearch(prefix));
+}
+
+// ═══════════════════════════════════════════════════════════
 //  SYLLABLE COMPOSER
 //  Consonant + full vowel → consonant + vowel sign (matra)
 //  e.g.  ക + ആ → കാ    ക + അ → ക  (inherent 'a')
@@ -394,14 +507,15 @@ function composeText(current, newStr) {
 function commitChar(str) {
   st.text = composeText(st.text, str);
   refreshOut();
-  // Auto-restore sub-menu ring after commit
+  updateSuggestions();
   if (st.innerSub) { st.innerSub = false; st.innerSegs = ROOT_INNER; }
   if (st.outerSub) { st.outerSub = false; st.outerSegs = ROOT_OUTER; }
 }
 function deleteLast() {
-  const segs = [...new Intl.Segmenter('ml', { granularity: 'grapheme' }).segment(st.text)];
+  const segs = [...segmenter.segment(st.text)];
   st.text = segs.slice(0, -1).map(s => s.segment).join('');
   refreshOut();
+  updateSuggestions();
 }
 function refreshOut() {
   if (st.text) {
