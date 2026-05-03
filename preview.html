@@ -335,17 +335,72 @@ function fireLp(ring, idx) {
 }
 
 // ═══════════════════════════════════════════════════════════
+//  SYLLABLE COMPOSER
+//  Consonant + full vowel → consonant + vowel sign (matra)
+//  e.g.  ക + ആ → കാ    ക + അ → ക  (inherent 'a')
+// ═══════════════════════════════════════════════════════════
+const VOWEL_SIGN = {
+  'അ': '',    // inherent 'a' — no sign
+  'ആ': 'ാ',
+  'ഇ': 'ി',
+  'ഈ': 'ീ',
+  'ഉ': 'ു',
+  'ഊ': 'ൂ',
+  'ഋ': 'ൃ',
+  'ൠ': 'ൄ',
+  'എ': 'െ',
+  'ഏ': 'േ',
+  'ഐ': 'ൈ',
+  'ഒ': 'ൊ',
+  'ഓ': 'ോ',
+  'ഔ': 'ൌ',
+};
+const MALAYALAM_VOWELS = new Set(Object.keys(VOWEL_SIGN));
+
+function isBareConsonant(grapheme) {
+  if (!grapheme) return false;
+  const cp = grapheme.codePointAt(0);
+  const len = String.fromCodePoint(cp).length;
+  // Single codepoint, no trailing combining chars
+  if (grapheme.length !== len) return false;
+  return (cp >= 0x0D15 && cp <= 0x0D39) || (cp >= 0x0D7A && cp <= 0x0D7F);
+}
+
+function lastGrapheme(text) {
+  if (!text) return '';
+  const segs = [...new Intl.Segmenter('ml', { granularity: 'grapheme' }).segment(text)];
+  return segs.length ? segs[segs.length - 1].segment : '';
+}
+
+function composeText(current, newStr) {
+  if (!newStr) return current;
+  if (newStr.length === 1 || [...newStr].length === 1) {
+    const ch = [...newStr][0];
+    if (MALAYALAM_VOWELS.has(ch)) {
+      const lastG = lastGrapheme(current);
+      if (isBareConsonant(lastG)) {
+        const sign = VOWEL_SIGN[ch];
+        const base = current.slice(0, current.length - lastG.length);
+        return base + lastG + sign;   // sign='' for inherent 'a'
+      }
+    }
+  }
+  return current + newStr;
+}
+
+// ═══════════════════════════════════════════════════════════
 //  TEXT COMMIT
 // ═══════════════════════════════════════════════════════════
 function commitChar(str) {
-  st.text += str;
+  st.text = composeText(st.text, str);
   refreshOut();
   // Auto-restore sub-menu ring after commit
   if (st.innerSub) { st.innerSub = false; st.innerSegs = ROOT_INNER; }
   if (st.outerSub) { st.outerSub = false; st.outerSegs = ROOT_OUTER; }
 }
 function deleteLast() {
-  st.text = [...st.text].slice(0, -1).join('');
+  const segs = [...new Intl.Segmenter('ml', { granularity: 'grapheme' }).segment(st.text)];
+  st.text = segs.slice(0, -1).map(s => s.segment).join('');
   refreshOut();
 }
 function refreshOut() {

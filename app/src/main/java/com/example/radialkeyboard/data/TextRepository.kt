@@ -10,7 +10,11 @@ class TextRepository {
         if (char == '\b') deleteLastGrapheme() else _buffer.append(char)
     }
 
-    fun append(text: String) { _buffer.append(text) }
+    fun append(text: String) {
+        val composed = SyllableComposer.compose(_buffer.toString(), text)
+        _buffer.clear()
+        _buffer.append(composed)
+    }
 
     /** Delete the last grapheme cluster (handles multi-codepoint conjuncts like ച്ച). */
     fun deleteLastGrapheme() {
