@@ -44,7 +44,7 @@ object DualRingLayout {
         RingKey("ഋ",    "ഋ",    listOf("ഋ","ൠ")),
         RingKey("എ",    "എ",    listOf("എ","ഏ","ഐ")),
         RingKey("ഒ",    "ഒ",    listOf("ഒ","ഓ","ഔ")),
-        RingKey("അം",   "അം",   listOf("ം","ഃ","്")),
+        RingKey("അം",   "അം",   listOf("ം","ഃ","ഁ","്")),  // ഁ = U+0D01 Candrabindu
         RingKey("്",    "്",    listOf("ൺ","ൻ","ർ","ൽ","ൾ")),
         RingKey("123",  "1",    listOf("1","2","3","4","5","6","7","8","9","0")),
         RingKey("&",    "&",    listOf("&","@","#","!","?",".",",","\"","'","_")),

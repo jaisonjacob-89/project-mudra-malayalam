@@ -33,7 +33,7 @@ object SyllableComposer {
         'ഐ' to "ൈ",   // ൈ
         'ഒ' to "ൊ",   // ൊ
         'ഓ' to "ോ",   // ോ
-        'ഔ' to "ൌ",   // ൌ
+        'ഔ' to "ൗ",   // ൗ U+0D57 — modern Au length mark (U+0D4C is archaic)
     )
 
     private val MALAYALAM_VOWELS: Set<Char> = VOWEL_SIGN.keys
