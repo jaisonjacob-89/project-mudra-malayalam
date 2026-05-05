@@ -118,8 +118,8 @@ const ROOT_INNER = [
   { label:'ത',   char:'ത'   },
   { label:'പ',   char:'പ'   },
   { label:'യ',   char:'യ'   },
-  { label:'ഷ',   char:'ഷ'   },
-  { label:'റ',   char:'റ'   },
+  { label:'ശ',   char:'ശ'   },
+  { label:'ൻ',   char:'ൻ'   },
   { label:'ച്ച', char:'ച്ച' },
   { label:'ല്ല', char:'ല്ല' },
 ];
@@ -149,8 +149,8 @@ const SUB_INNER = {
   'ത':   ['ത','ഥ','ദ','ധ','ന'],
   'പ':   ['പ','ഫ','ബ','ഭ','മ'],
   'യ':   ['യ','ര','ല','വ'],
-  'ഷ':   ['ശ','ഷ','സ','ഹ'],
-  'റ':   ['ള','ഴ','റ'],
+  'ശ':   ['ശ','ഷ','സ','ഹ','ള','ഴ','റ'],
+  'ൻ':   ['ൻ','ർ','ൽ','ൾ','ൺ'],
   'ച്ച': ['ക്ക','ച്ച','ട്ട','ത്ത','പ്പ','ന്ന'],
   'ല്ല': ['ല്ല','ള്ള','മ്മ','ർ','ൽ','ൾ'],
 };
@@ -428,7 +428,7 @@ function isBareConsonant(grapheme) {
   const len = String.fromCodePoint(cp).length;
   // Single codepoint, no trailing combining chars
   if (grapheme.length !== len) return false;
-  return (cp >= 0x0D15 && cp <= 0x0D39) || (cp >= 0x0D7A && cp <= 0x0D7F);
+  return (cp >= 0x0D15 && cp <= 0x0D39); // core consonants only; chillus (0D7A-0D7F) excluded
 }
 
 function lastGrapheme(text) {

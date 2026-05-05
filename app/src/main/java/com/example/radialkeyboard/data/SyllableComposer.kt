@@ -38,10 +38,11 @@ object SyllableComposer {
 
     private val MALAYALAM_VOWELS: Set<Char> = VOWEL_SIGN.keys
 
-    // U+0D15–U+0D39 = ക–ഹ core consonants
-    // U+0D7A–U+0D7F = chillu letters (ൺ ൻ ർ ൽ ൾ ൿ)
+    // U+0D15–U+0D39 = ക–ഹ core consonants (have inherent 'a', take vowel signs)
+    // Chillu letters (U+0D7A–U+0D7F) are excluded — they are pure consonants
+    // with no inherent vowel and never take vowel signs.
     private fun isMalayalamConsonant(cp: Int): Boolean =
-        cp in 0x0D15..0x0D39 || cp in 0x0D7A..0x0D7F
+        cp in 0x0D15..0x0D39
 
     // A bare consonant = single Malayalam consonant codepoint, nothing else.
     private fun isBareConsonant(grapheme: String): Boolean {
