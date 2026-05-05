@@ -578,11 +578,15 @@ cv.addEventListener('pointermove', e => {
     outerRotSet = true;
   }
 
-  // Reveal ring only when finger enters its zone; hide the other ring
+  // Inner zone: show inner ring only (outer stays if already visible).
+  // Outer zone: show both rings together; once outer is seen, both remain visible.
   if (dist >= Rdead && dist < Rsplit) {
-    if (innerTargetAlpha !== 1) { innerTargetAlpha = 1; outerTargetAlpha = 0; scheduleAnim(); }
+    if (innerTargetAlpha !== 1) { innerTargetAlpha = 1; scheduleAnim(); }
   } else if (dist >= Rsplit && dist <= R) {
-    if (outerTargetAlpha !== 1) { outerTargetAlpha = 1; innerTargetAlpha = 0; scheduleAnim(); }
+    let changed = false;
+    if (outerTargetAlpha !== 1) { outerTargetAlpha = 1; changed = true; }
+    if (innerTargetAlpha !== 1) { innerTargetAlpha = 1; changed = true; }
+    if (changed) scheduleAnim();
   }
 
   // Track whether finger has gone beyond the outer ring (R already declared above)
