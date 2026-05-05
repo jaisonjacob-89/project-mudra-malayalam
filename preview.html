@@ -281,10 +281,10 @@ function showWheel(x, y) {
   innerAlpha = 0; outerAlpha = 0;
   innerTargetAlpha = 0; outerTargetAlpha = 0;
   hintEl.style.display = 'none';
-  draw();
+  scheduleAnim();
 }
 function hideWheel() {
-  st.visible = false; targetScale = 0;
+  st.visible = false; st.scale = 0; targetScale = 0;
   st.ring = null; st.idx = -1;
   beyondDir = 0;
   innerAlpha = 0; outerAlpha = 0;
