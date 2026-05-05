@@ -241,6 +241,8 @@ let isDown = false;
 let lpTimer = null, lpAnimId = null;
 // 0 = inside ring, 1 = beyond right (space), -1 = beyond left (delete)
 let beyondDir = 0;
+let innerAlpha = 0, outerAlpha = 0;
+let innerTargetAlpha = 0, outerTargetAlpha = 0;
 
 // ═══════════════════════════════════════════════════════════
 //  CANVAS RESIZE
@@ -258,7 +260,11 @@ function scheduleAnim() {
   if (rafId) cancelAnimationFrame(rafId);
   rafId = requestAnimationFrame(() => {
     st.scale += (targetScale - st.scale) * 0.20;
-    const stillAnimating = Math.abs(targetScale - st.scale) > 0.003;
+    innerAlpha += (innerTargetAlpha - innerAlpha) * 0.25;
+    outerAlpha += (outerTargetAlpha - outerAlpha) * 0.25;
+    const stillAnimating = Math.abs(targetScale - st.scale) > 0.003
+      || Math.abs(innerTargetAlpha - innerAlpha) > 0.003
+      || Math.abs(outerTargetAlpha - outerAlpha) > 0.003;
     const lpInProgress   = st.lpFiring && lpTimer !== null;
     draw();
     if (stillAnimating || lpInProgress) scheduleAnim();
@@ -270,17 +276,21 @@ function scheduleAnim() {
 // ═══════════════════════════════════════════════════════════
 function showWheel(x, y) {
   st.cx = x; st.cy = y; st.visible = true;
+  st.scale = 1; targetScale = 1;
   st.ring = null; st.idx = -1;
-  targetScale = 1;
+  innerAlpha = 0; outerAlpha = 0;
+  innerTargetAlpha = 0; outerTargetAlpha = 0;
   hintEl.style.display = 'none';
-  scheduleAnim();
+  draw();
 }
 function hideWheel() {
   st.visible = false; targetScale = 0;
   st.ring = null; st.idx = -1;
   beyondDir = 0;
+  innerAlpha = 0; outerAlpha = 0;
+  innerTargetAlpha = 0; outerTargetAlpha = 0;
   cancelLp();
-  scheduleAnim();
+  draw();
   if (!st.text) hintEl.style.display = '';
 }
 function resetRings() {
@@ -568,6 +578,13 @@ cv.addEventListener('pointermove', e => {
     outerRotSet = true;
   }
 
+  // Reveal ring only when finger enters its zone; hide the other ring
+  if (dist >= Rdead && dist < Rsplit) {
+    if (innerTargetAlpha !== 1) { innerTargetAlpha = 1; outerTargetAlpha = 0; scheduleAnim(); }
+  } else if (dist >= Rsplit && dist <= R) {
+    if (outerTargetAlpha !== 1) { outerTargetAlpha = 1; innerTargetAlpha = 0; scheduleAnim(); }
+  }
+
   // Track whether finger has gone beyond the outer ring (R already declared above)
   const newBeyond = dist > R ? (dx > 0 ? 1 : -1) : 0;
   if (newBeyond !== beyondDir) { beyondDir = newBeyond; draw(); }
@@ -660,6 +677,7 @@ function draw() {
   const Rdead  = R * F_DEAD;
 
   // ── OUTER RING segments ───────────────────────────────
+  ctx.save(); ctx.globalAlpha = outerAlpha;
   for (let i = 0; i < N; i++) {
     const sDeg = st.outerRot + i * SWEEP;
     const isHi = st.ring === 'outer' && st.idx === i;
@@ -673,8 +691,10 @@ function draw() {
                   :            C_OUTER_BASE;
     ctx.fill();
   }
+  ctx.restore();
 
   // ── INNER RING segments ───────────────────────────────
+  ctx.save(); ctx.globalAlpha = innerAlpha;
   for (let i = 0; i < N; i++) {
     const sDeg = st.innerRot + i * SWEEP;
     const isHi = st.ring === 'inner' && st.idx === i;
@@ -688,9 +708,12 @@ function draw() {
                   :            C_INNER_BASE;
     ctx.fill();
   }
+  ctx.restore();
 
   // ── LONG-PRESS PROGRESS ARC ───────────────────────────
   if (st.lpFiring && st.lpIdx >= 0 && st.lpStart > 0) {
+    const lpAlpha = st.lpRing === 'inner' ? innerAlpha : outerAlpha;
+    ctx.save(); ctx.globalAlpha = lpAlpha;
     const elapsed  = Date.now() - st.lpStart;
     const progress = Math.min(elapsed / LP_MS, 1);
     const rot      = st.lpRing === 'inner' ? st.innerRot : st.outerRot;
@@ -707,9 +730,7 @@ function draw() {
     if (pSweep > 0) {
       annulus(cx, cy, r1, r2, sDeg, pSweep);
       ctx.fillStyle = C_LP_PROGRESS;
-      ctx.globalAlpha = 0.55;
-      ctx.fill();
-      ctx.globalAlpha = 1;
+      ctx.save(); ctx.globalAlpha = 0.55; ctx.fill(); ctx.restore();
     }
 
     // Label "hold…"
@@ -724,9 +745,11 @@ function draw() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(secLeft + 's', lx, ly);
     ctx.restore();
+    ctx.restore();
   }
 
-  // ── DIVIDER LINES — use inner ring rotation (both rings share the same N) ──
+  // ── DIVIDER LINES — inner ring ──────────────────────
+  ctx.save(); ctx.globalAlpha = innerAlpha;
   ctx.strokeStyle = C_DIVIDER; ctx.lineWidth = 1.2;
   for (let i = 0; i < N; i++) {
     const rad = (st.innerRot + i * SWEEP) * Math.PI / 180;
@@ -735,6 +758,10 @@ function draw() {
     ctx.lineTo(cx + Math.cos(rad)*Rsplit, cy + Math.sin(rad)*Rsplit);
     ctx.stroke();
   }
+  ctx.restore();
+  // ── DIVIDER LINES — outer ring ──────────────────────
+  ctx.save(); ctx.globalAlpha = outerAlpha;
+  ctx.strokeStyle = C_DIVIDER; ctx.lineWidth = 1.2;
   for (let i = 0; i < N; i++) {
     const rad = (st.outerRot + i * SWEEP) * Math.PI / 180;
     ctx.beginPath();
@@ -742,16 +769,22 @@ function draw() {
     ctx.lineTo(cx + Math.cos(rad)*R,      cy + Math.sin(rad)*R);
     ctx.stroke();
   }
+  ctx.restore();
 
   // ── RING-SPLIT CIRCLE ─────────────────────────────────
+  ctx.save(); ctx.globalAlpha = Math.max(innerAlpha, outerAlpha);
   ctx.beginPath(); ctx.arc(cx, cy, Rsplit, 0, Math.PI*2);
   ctx.strokeStyle = C_SPLIT_LINE; ctx.lineWidth = 1.3; ctx.stroke();
+  ctx.restore();
 
   // ── OUTER EDGE CIRCLE ─────────────────────────────────
+  ctx.save(); ctx.globalAlpha = outerAlpha;
   ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI*2);
   ctx.strokeStyle = 'rgba(255,255,255,0.09)'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.restore();
 
   // ── OUTER RING LABELS ─────────────────────────────────
+  ctx.save(); ctx.globalAlpha = outerAlpha;
   const LR_o = Rsplit + (R - Rsplit) * 0.52;
   for (let i = 0; i < N; i++) {
     const seg = st.outerSegs[i];
@@ -781,8 +814,10 @@ function draw() {
     ctx.fillText(seg.label, lx, ly);
     ctx.restore();
   }
+  ctx.restore();
 
   // ── INNER RING LABELS ─────────────────────────────────
+  ctx.save(); ctx.globalAlpha = innerAlpha;
   const LR_i = Rdead + (Rsplit - Rdead) * 0.52;
   for (let i = 0; i < N; i++) {
     const seg = st.innerSegs[i];
@@ -811,9 +846,12 @@ function draw() {
     ctx.fillText(seg.label, lx, ly);
     ctx.restore();
   }
+  ctx.restore();
 
   // ── HIGHLIGHT GLOW OUTLINE ────────────────────────────
   if (st.ring && st.idx >= 0) {
+    const hiAlpha = st.ring === 'inner' ? innerAlpha : outerAlpha;
+    ctx.save(); ctx.globalAlpha = hiAlpha;
     const rot    = st.ring === 'inner' ? st.innerRot : st.outerRot;
     const sDeg   = rot + st.idx * SWEEP;
     const sa     = sDeg * Math.PI/180;
@@ -829,6 +867,7 @@ function draw() {
     ctx.arc(cx, cy, r1+1, ea, sa, true);
     ctx.closePath();
     ctx.strokeStyle = hiCol; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.restore();
   }
 
   // ── BEYOND-RING ACTION HINT ───────────────────────────
