@@ -509,50 +509,17 @@ document.getElementById('snd').addEventListener('click', () => {
 // ═══════════════════════════════════════════════════════════
 //  TEXT-TO-SPEECH
 // ═══════════════════════════════════════════════════════════
-//  BUZZ: ACTIVATION SOUND — futuristic interface popup (Web Audio API)
+//  BUZZ: UI SOUNDS
 // ═══════════════════════════════════════════════════════════
-let _actx = null;
-function _getActx() {
-  if (!_actx || _actx.state === 'closed') {
-    _actx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  if (_actx.state === 'suspended') _actx.resume();
-  return _actx;
+const sndActivate = new Audio('Button sounds/mixkit-select-click-1109.wav');
+const sndInner    = new Audio('Button sounds/mixkit-select-click-1109.wav');
+const sndOuter    = new Audio('Button sounds/mixkit-game-click-1114.wav');
+
+function playSound(snd) {
+  try { snd.currentTime = 0; snd.play().catch(() => {}); } catch (_) {}
 }
 
-function playActivationSound() {
-  try {
-    const ac  = _getActx();
-    const t   = ac.currentTime;
-
-    // Shared echo: 130ms delay, 22% feedback, 30% wet
-    const dly = ac.createDelay(1); dly.delayTime.value = 0.13;
-    const fb  = ac.createGain();   fb.gain.value = 0.22;
-    const wet = ac.createGain();   wet.gain.value = 0.30;
-    dly.connect(fb); fb.connect(dly); dly.connect(wet); wet.connect(ac.destination);
-
-    // Helper: one synthesised layer
-    function tone(type, f0, f1, fT, g0, gPeak, gPeakT, gEnd, gEndT, startT) {
-      const osc = ac.createOscillator();
-      const g   = ac.createGain();
-      osc.type = type;
-      osc.frequency.setValueAtTime(f0, t + startT);
-      if (f1) osc.frequency.exponentialRampToValueAtTime(f1, t + fT);
-      g.gain.setValueAtTime(g0, t + startT);
-      g.gain.linearRampToValueAtTime(gPeak, t + gPeakT);
-      g.gain.exponentialRampToValueAtTime(gEnd, t + gEndT);
-      osc.connect(g); g.connect(ac.destination); g.connect(dly);
-      osc.start(t + startT); osc.stop(t + gEndT);
-    }
-
-    //              type       f0    f1    fT   g0     gPk   gPkT  gEnd   gEndT  start
-    tone('sine',    55,   25,  0.30, 1e-4, 0.45, 0.02, 1e-4, 0.35, 0.00); // sub thump
-    tone('sine',   220, 1400,  0.55, 1e-4, 0.22, 0.10, 1e-4, 1.20, 0.04); // mid sweep up
-    tone('sine',  1100,  620,  1.60, 1e-4, 0.18, 0.14, 1e-4, 2.00, 0.08); // harmonic ring-out
-    tone('sine',  2800, 1800,  1.80, 1e-4, 0.07, 0.22, 1e-4, 1.80, 0.16); // high shimmer
-    tone('sine',  5200, 3800,  1.70, 1e-4, 0.03, 0.28, 1e-4, 1.60, 0.22); // airy sparkle
-  } catch (_) {}
-}
+function playActivationSound() { playSound(sndActivate); }
 
 // ═══════════════════════════════════════════════════════════
 const ttsAudio = new Audio();
@@ -656,10 +623,11 @@ cv.addEventListener('pointermove', e => {
 
   if (ring !== st.ring || idx !== st.idx) {
     st.ring = ring; st.idx = idx; draw();
-    // Speak the label of the newly entered segment
     if (ring && idx >= 0) {
       const segs = ring === 'inner' ? st.innerSegs : st.outerSegs;
       speak(segs[idx]?.label);
+      if (ring === 'inner') playSound(sndInner);
+      else                  playSound(sndOuter);
     }
   }
 });
