@@ -205,7 +205,7 @@ function buildSubSegs(chars) {
 // ═══════════════════════════════════════════════════════════
 const N      = 10;
 const SWEEP  = 36;
-const R_OUT  = 148;     // outer wheel radius (unscaled px)
+let R_OUT  = 148;       // outer wheel radius — recomputed on resize
 const F_SPLIT = 0.60;   // inner/outer ring boundary fraction
 const F_DEAD  = 0.20;   // center dead-zone fraction
 const LP_MS   = 1000;   // long-press duration
@@ -274,7 +274,14 @@ let innerTargetAlpha = 0, outerTargetAlpha = 0;
 // ═══════════════════════════════════════════════════════════
 function resize() {
   const a = cv.parentElement;
-  cv.width = a.clientWidth; cv.height = a.clientHeight; draw();
+  cv.width = a.clientWidth; cv.height = a.clientHeight;
+  R_OUT = Math.round(Math.min(cv.width, cv.height) * 0.38);
+  const ring = document.querySelector('#kzone .kz-ring');
+  if (ring) {
+    const s = Math.round(R_OUT * 0.32) + 'px';
+    ring.style.width = s; ring.style.height = s;
+  }
+  draw();
 }
 window.addEventListener('resize', resize); resize();
 
