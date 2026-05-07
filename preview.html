@@ -35,7 +35,12 @@
     font-family:'Noto Sans Malayalam',sans-serif;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   }
-  #out.ph{color:rgba(0,0,0,.3);font-size:13px;font-family:'Segoe UI',sans-serif;}
+  #out.ph{color:transparent;font-size:17px;}
+  #out.ph::after{
+    content:'|';color:#1A1A1A;font-size:17px;
+    animation:blink .9s step-start infinite;
+  }
+  @keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
   .send{
     background:#2E7D32;border:none;border-radius:7px;
     width:34px;height:34px;cursor:pointer;
@@ -107,7 +112,7 @@
 
 <div class="device">
   <div class="bar">
-    <span id="out" class="ph">ടൈപ്പ് ചെയ്തു തുടങ്ങുക</span>
+    <span id="out" class="ph"></span>
     <button class="send" id="snd">
       <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
     </button>
@@ -542,7 +547,7 @@ function refreshOut() {
   if (st.text) {
     outEl.textContent = st.text; outEl.classList.remove('ph');
   } else {
-    outEl.textContent = 'ടൈപ്പ് ചെയ്തു തുടങ്ങുക'; outEl.classList.add('ph');
+    outEl.textContent = ''; outEl.classList.add('ph');
   }
 }
 function commitHighlighted() {
