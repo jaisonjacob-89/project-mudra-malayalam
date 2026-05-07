@@ -54,6 +54,33 @@
     font-family:'Segoe UI',sans-serif;
   }
 
+  /* Neil: trigger zone overlay */
+  #kzone{
+    position:absolute;
+    /* inset = R_OUT(148px) from each edge */
+    top:148px;left:148px;right:148px;bottom:148px;
+    border:2px dashed rgba(255,255,255,0.45);
+    border-radius:14px;
+    pointer-events:none;
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    gap:8px;
+  }
+  #kzone .kz-cross{
+    position:relative;width:24px;height:24px;
+  }
+  #kzone .kz-cross::before,
+  #kzone .kz-cross::after{
+    content:'';position:absolute;background:rgba(255,255,255,0.40);
+    border-radius:2px;
+  }
+  #kzone .kz-cross::before{width:100%;height:2px;top:50%;left:0;transform:translateY(-50%);}
+  #kzone .kz-cross::after {width:2px;height:100%;left:50%;top:0;transform:translateX(-50%);}
+  #kzone .kz-label{
+    font-size:11px;color:rgba(255,255,255,0.38);
+    font-family:'Segoe UI',sans-serif;letter-spacing:.5px;
+  }
+
   /* Neil: suggestion bar */
   .sug-bar{
     display:flex;gap:8px;padding:6px 12px;
@@ -97,6 +124,10 @@
   <div class="sug-bar" id="sug"></div>
   <div class="area">
     <canvas id="c"></canvas>
+    <div id="kzone">
+      <div class="kz-cross"></div>
+      <span class="kz-label">Tap here to type</span>
+    </div>
     <div class="hint" id="hint">Touch anywhere · Lift to enter · Hold 5s for sub-menu</div>
   </div>
 </div>
@@ -339,6 +370,7 @@ function scheduleAnim() {
 // ═══════════════════════════════════════════════════════════
 //  SHOW / HIDE WHEEL
 // ═══════════════════════════════════════════════════════════
+const kzoneEl = document.getElementById('kzone');
 function showWheel(x, y) {
   st.cx = x; st.cy = y; st.visible = true;
   st.scale = 1; targetScale = 1;
@@ -346,6 +378,7 @@ function showWheel(x, y) {
   innerAlpha = 0; outerAlpha = 0;
   innerTargetAlpha = 0; outerTargetAlpha = 0;
   hintEl.style.display = 'none';
+  kzoneEl.style.display = 'none';
   playActivationSound();
   scheduleAnim();
 }
@@ -357,6 +390,7 @@ function hideWheel() {
   innerTargetAlpha = 0; outerTargetAlpha = 0;
   cancelLp();
   draw();
+  kzoneEl.style.display = '';
   if (!st.text) hintEl.style.display = '';
 }
 function resetRings() {
