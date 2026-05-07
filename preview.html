@@ -51,7 +51,8 @@
     position:absolute;bottom:12px;left:0;right:0;
     text-align:center;font-size:11px;
     color:rgba(255,255,255,.38);pointer-events:none;
-    font-family:'Segoe UI',sans-serif;
+    font-family:'Noto Sans Malayalam','Segoe UI',sans-serif;
+    padding:0 12px;line-height:1.5;
   }
 
   /* Neil: trigger zone overlay — position set dynamically in resize() */
@@ -117,7 +118,7 @@
     <div id="kzone">
       <span class="kz-label">ടൈപ്പ് ചെയ്യാൻ ഇവിടെ ക്ലിക്ക് ചെയ്യുക</span>
     </div>
-    <div class="hint" id="hint">Touch anywhere · Lift to enter · Hold 5s for sub-menu</div>
+    <div class="hint" id="hint">അക്ഷരം ചേർക്കാൻ വിരൽ ഉയർത്തുക · സബ് മെനു ലഭിക്കാൻ ഒരു സെക്കൻഡ് അമർത്തിപ്പിടിക്കുക</div>
   </div>
 </div>
 
@@ -558,7 +559,7 @@ document.getElementById('snd').addEventListener('click', () => {
     hintEl.style.display = '';
     hintEl.textContent = '✓ Message sent';
     setTimeout(() => {
-      hintEl.textContent = 'Touch anywhere · Lift to enter · Hold 5s for sub-menu';
+      hintEl.textContent = 'അക്ഷരം ചേർക്കാൻ വിരൽ ഉയർത്തുക · സബ് മെനു ലഭിക്കാൻ ഒരു സെക്കൻഡ് അമർത്തിപ്പിടിക്കുക';
       hintEl.style.color = 'rgba(255,255,255,.38)';
     }, 1800);
   }
