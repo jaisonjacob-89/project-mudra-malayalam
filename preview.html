@@ -280,23 +280,41 @@ function roundRect(x, y, w, h, r) {
 function drawTriggerZone() {
   const z = getTriggerZone();
   if (z.w <= 0 || z.h <= 0) return;
+  const cx = z.x + z.w / 2, cy = z.y + z.h / 2;
+  const arm = 22, gap = 10;   // bracket arm length and corner radius
   ctx.save();
-  // Filled background
-  roundRect(z.x, z.y, z.w, z.h, 14);
-  ctx.fillStyle = 'rgba(255,255,255,0.04)';
-  ctx.fill();
-  // Dashed border
-  ctx.setLineDash([6, 5]);
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+
+  // Four corner brackets
+  const corners = [
+    [z.x,        z.y,        1,  1],
+    [z.x + z.w,  z.y,       -1,  1],
+    [z.x,        z.y + z.h,  1, -1],
+    [z.x + z.w,  z.y + z.h, -1, -1],
+  ];
+  corners.forEach(([x, y, sx, sy]) => {
+    ctx.beginPath();
+    ctx.moveTo(x + sx * arm, y);
+    ctx.lineTo(x + sx * gap, y);
+    ctx.arcTo(x, y, x, y + sy * gap, gap);
+    ctx.lineTo(x, y + sy * arm);
+    ctx.stroke();
+  });
+
+  // Centre crosshair
   ctx.strokeStyle = 'rgba(255,255,255,0.30)';
-  ctx.lineWidth = 1.5;
-  roundRect(z.x, z.y, z.w, z.h, 14);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  // Label
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cx - 10, cy); ctx.lineTo(cx + 10, cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, cy - 10); ctx.lineTo(cx, cy + 10); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2); ctx.stroke();
+
+  // Label below crosshair
   ctx.font = '11px "Segoe UI",sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.35)';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('Tap here to type', z.x + z.w / 2, z.y + z.h / 2);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText('Tap here to type', cx, cy + 14);
   ctx.restore();
 }
 
