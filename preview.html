@@ -264,19 +264,37 @@ function inTriggerZone(px, py) {
   const z = getTriggerZone();
   return px >= z.x && px <= z.x + z.w && py >= z.y && py <= z.y + z.h;
 }
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y,     x + w, y + r,     r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x,     y + h, x,     y + h - r, r);
+  ctx.lineTo(x,     y + r);
+  ctx.arcTo(x,     y,     x + r, y,         r);
+  ctx.closePath();
+}
 function drawTriggerZone() {
   const z = getTriggerZone();
   if (z.w <= 0 || z.h <= 0) return;
   ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-  ctx.lineWidth = 1.5;
+  // Filled background
+  roundRect(z.x, z.y, z.w, z.h, 14);
+  ctx.fillStyle = 'rgba(255,255,255,0.04)';
+  ctx.fill();
+  // Dashed border
   ctx.setLineDash([6, 5]);
-  ctx.beginPath();
-  ctx.roundRect(z.x, z.y, z.w, z.h, 14);
+  ctx.strokeStyle = 'rgba(255,255,255,0.30)';
+  ctx.lineWidth = 1.5;
+  roundRect(z.x, z.y, z.w, z.h, 14);
   ctx.stroke();
   ctx.setLineDash([]);
-  ctx.font = '600 11px "Segoe UI",sans-serif';
-  ctx.fillStyle = 'rgba(255,255,255,0.22)';
+  // Label
+  ctx.font = '11px "Segoe UI",sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText('Tap here to type', z.x + z.w / 2, z.y + z.h / 2);
   ctx.restore();
