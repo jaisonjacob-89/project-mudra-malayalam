@@ -107,7 +107,7 @@
 
 <div class="device">
   <div class="bar">
-    <span id="out" class="ph">Start typing…</span>
+    <span id="out" class="ph">ടൈപ്പ് ചെയ്തു തുടങ്ങുക</span>
     <button class="send" id="snd">
       <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
     </button>
@@ -542,7 +542,7 @@ function refreshOut() {
   if (st.text) {
     outEl.textContent = st.text; outEl.classList.remove('ph');
   } else {
-    outEl.textContent = 'Start typing…'; outEl.classList.add('ph');
+    outEl.textContent = 'ടൈപ്പ് ചെയ്തു തുടങ്ങുക'; outEl.classList.add('ph');
   }
 }
 function commitHighlighted() {
