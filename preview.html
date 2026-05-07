@@ -66,16 +66,6 @@
     align-items:center;justify-content:center;
     gap:8px;
   }
-  #kzone .kz-cross{
-    position:relative;width:24px;height:24px;
-  }
-  #kzone .kz-cross::before,
-  #kzone .kz-cross::after{
-    content:'';position:absolute;background:rgba(255,255,255,0.40);
-    border-radius:2px;
-  }
-  #kzone .kz-cross::before{width:100%;height:2px;top:50%;left:0;transform:translateY(-50%);}
-  #kzone .kz-cross::after {width:2px;height:100%;left:50%;top:0;transform:translateX(-50%);}
   #kzone .kz-label{
     font-size:11px;color:rgba(255,255,255,0.38);
     font-family:'Segoe UI',sans-serif;letter-spacing:.5px;
@@ -125,7 +115,6 @@
   <div class="area">
     <canvas id="c"></canvas>
     <div id="kzone">
-      <div class="kz-cross"></div>
       <span class="kz-label">Tap here to type</span>
     </div>
     <div class="hint" id="hint">Touch anywhere · Lift to enter · Hold 5s for sub-menu</div>
@@ -307,46 +296,6 @@ function roundRect(x, y, w, h, r) {
   ctx.lineTo(x,     y + r);
   ctx.arcTo(x,     y,     x + r, y,         r);
   ctx.closePath();
-}
-function drawTriggerZone() {
-  const z = getTriggerZone();
-  if (z.w <= 0 || z.h <= 0) return;
-  const cx = z.x + z.w / 2, cy = z.y + z.h / 2;
-  const arm = 22, gap = 10;   // bracket arm length and corner radius
-  ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-  ctx.lineWidth = 2;
-  ctx.lineCap = 'round';
-
-  // Four corner brackets
-  const corners = [
-    [z.x,        z.y,        1,  1],
-    [z.x + z.w,  z.y,       -1,  1],
-    [z.x,        z.y + z.h,  1, -1],
-    [z.x + z.w,  z.y + z.h, -1, -1],
-  ];
-  corners.forEach(([x, y, sx, sy]) => {
-    ctx.beginPath();
-    ctx.moveTo(x + sx * arm, y);
-    ctx.lineTo(x + sx * gap, y);
-    ctx.arcTo(x, y, x, y + sy * gap, gap);
-    ctx.lineTo(x, y + sy * arm);
-    ctx.stroke();
-  });
-
-  // Centre crosshair
-  ctx.strokeStyle = 'rgba(255,255,255,0.30)';
-  ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(cx - 10, cy); ctx.lineTo(cx + 10, cy); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(cx, cy - 10); ctx.lineTo(cx, cy + 10); ctx.stroke();
-  ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2); ctx.stroke();
-
-  // Label below crosshair
-  ctx.font = '11px "Segoe UI",sans-serif';
-  ctx.fillStyle = 'rgba(255,255,255,0.35)';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText('Tap here to type', cx, cy + 14);
-  ctx.restore();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -787,7 +736,7 @@ function segFont(label, px) {
 function draw() {
   const W = cv.width, H = cv.height;
   ctx.clearRect(0, 0, W, H);
-  if (!st.visible && st.scale < 0.01) { drawTriggerZone(); return; }
+  if (!st.visible && st.scale < 0.01) return;
 
   const s      = st.scale;
   const cx     = st.cx, cy = st.cy;
