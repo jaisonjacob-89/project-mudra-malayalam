@@ -57,18 +57,22 @@
   /* Neil: trigger zone overlay */
   #kzone{
     position:absolute;
-    /* inset = R_OUT(148px) from each edge */
-    top:148px;left:148px;right:148px;bottom:148px;
-    border:2px dashed rgba(255,255,255,0.45);
-    border-radius:14px;
+    top:50%;left:50%;
+    transform:translate(-50%,-50%);
     pointer-events:none;
     display:flex;flex-direction:column;
     align-items:center;justify-content:center;
-    gap:8px;
+    gap:10px;
+  }
+  #kzone .kz-ring{
+    width:48px;height:48px;
+    border:2px dashed rgba(255,255,255,0.50);
+    border-radius:50%;
   }
   #kzone .kz-label{
     font-size:11px;color:rgba(255,255,255,0.38);
     font-family:'Segoe UI',sans-serif;letter-spacing:.5px;
+    white-space:nowrap;
   }
 
   /* Neil: suggestion bar */
@@ -115,6 +119,7 @@
   <div class="area">
     <canvas id="c"></canvas>
     <div id="kzone">
+      <div class="kz-ring"></div>
       <span class="kz-label">Tap here to type</span>
     </div>
     <div class="hint" id="hint">Touch anywhere · Lift to enter · Hold 5s for sub-menu</div>
