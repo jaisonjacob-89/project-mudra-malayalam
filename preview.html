@@ -254,6 +254,35 @@ function resize() {
 window.addEventListener('resize', resize); resize();
 
 // ═══════════════════════════════════════════════════════════
+//  TRIGGER ZONE — safe rectangle ensuring circle never clips edges
+// ═══════════════════════════════════════════════════════════
+function getTriggerZone() {
+  const pad = R_OUT + 8;
+  return { x: pad, y: pad, w: cv.width - pad * 2, h: cv.height - pad * 2 };
+}
+function inTriggerZone(px, py) {
+  const z = getTriggerZone();
+  return px >= z.x && px <= z.x + z.w && py >= z.y && py <= z.y + z.h;
+}
+function drawTriggerZone() {
+  const z = getTriggerZone();
+  if (z.w <= 0 || z.h <= 0) return;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([6, 5]);
+  ctx.beginPath();
+  ctx.roundRect(z.x, z.y, z.w, z.h, 14);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.font = '600 11px "Segoe UI",sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.22)';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('Tap here to type', z.x + z.w / 2, z.y + z.h / 2);
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════════
 //  ANIMATION LOOP
 // ═══════════════════════════════════════════════════════════
 function scheduleAnim() {
@@ -563,6 +592,7 @@ function speak(label) {
 // ═══════════════════════════════════════════════════════════
 cv.addEventListener('pointerdown', e => {
   e.preventDefault();
+  if (!inTriggerZone(e.offsetX, e.offsetY)) return;
   isDown = true;
   beyondDir = 0;
   innerRotSet = false; outerRotSet = false;
@@ -687,7 +717,7 @@ function segFont(label, px) {
 function draw() {
   const W = cv.width, H = cv.height;
   ctx.clearRect(0, 0, W, H);
-  if (!st.visible && st.scale < 0.01) return;
+  if (!st.visible && st.scale < 0.01) { drawTriggerZone(); return; }
 
   const s      = st.scale;
   const cx     = st.cx, cy = st.cy;
