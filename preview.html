@@ -54,20 +54,15 @@
     font-family:'Segoe UI',sans-serif;
   }
 
-  /* Neil: trigger zone overlay */
+  /* Neil: trigger zone overlay — position set dynamically in resize() */
   #kzone{
     position:absolute;
-    top:50%;left:50%;
-    transform:translate(-50%,-50%);
+    border:2px dashed rgba(255,255,255,0.45);
+    border-radius:14px;
     pointer-events:none;
     display:flex;flex-direction:column;
     align-items:center;justify-content:center;
-    gap:10px;
-  }
-  #kzone .kz-ring{
-    width:48px;height:48px;
-    border:2px dashed rgba(255,255,255,0.50);
-    border-radius:50%;
+    gap:8px;
   }
   #kzone .kz-label{
     font-size:11px;color:rgba(255,255,255,0.38);
@@ -119,7 +114,6 @@
   <div class="area">
     <canvas id="c"></canvas>
     <div id="kzone">
-      <div class="kz-ring"></div>
       <span class="kz-label">Tap here to type</span>
     </div>
     <div class="hint" id="hint">Touch anywhere · Lift to enter · Hold 5s for sub-menu</div>
@@ -275,11 +269,14 @@ let innerTargetAlpha = 0, outerTargetAlpha = 0;
 function resize() {
   const a = cv.parentElement;
   cv.width = a.clientWidth; cv.height = a.clientHeight;
-  R_OUT = Math.round(Math.min(cv.width, cv.height) * 0.38);
-  const ring = document.querySelector('#kzone .kz-ring');
-  if (ring) {
-    const s = Math.round(R_OUT * 0.32) + 'px';
-    ring.style.width = s; ring.style.height = s;
+  R_OUT = Math.round(Math.min(cv.width, cv.height) * 0.32);
+  const pad = R_OUT + 8;
+  const el = document.getElementById('kzone');
+  if (el) {
+    el.style.top    = pad + 'px';
+    el.style.left   = pad + 'px';
+    el.style.right  = pad + 'px';
+    el.style.bottom = pad + 'px';
   }
   draw();
 }
