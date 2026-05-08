@@ -614,28 +614,88 @@ function commitHighlighted() {
   if (seg?.char) commitChar(seg.char);
 }
 
-const sndBtn      = document.getElementById('snd');
-const iconPlay    = document.getElementById('icon-play');
-const iconStop    = document.getElementById('icon-stop');
+const GARGANTUA = 'http://localhost:5050';
+
+const sndBtn   = document.getElementById('snd');
+const iconPlay = document.getElementById('icon-play');
+const iconStop = document.getElementById('icon-stop');
+let   playAudio = null;   // current Gargantua Audio element
 
 function setSndPlaying(on) {
   iconPlay.style.display = on ? 'none' : '';
   iconStop.style.display = on ? ''     : 'none';
-  on ? sndBtn.classList.add('playing')    : sndBtn.classList.remove('playing');
-  on ? outEl.classList.add('playing')     : outEl.classList.remove('playing');
+  on ? sndBtn.classList.add('playing')  : sndBtn.classList.remove('playing');
+  on ? outEl.classList.add('playing')   : outEl.classList.remove('playing');
 }
 
-sndBtn.addEventListener('click', () => {
-  if (!window.speechSynthesis) return;
+function stopPlayback() {
+  if (playAudio) { playAudio.pause(); playAudio = null; }
+  if (window.speechSynthesis) speechSynthesis.cancel();
+  cursorPos = snapGrapheme(st.text, readCharIdx);
+  setSndPlaying(false);
+  refreshOut();
+}
 
-  if (sndBtn.classList.contains('playing')) {
-    speechSynthesis.cancel();
-    cursorPos = snapGrapheme(st.text, readCharIdx);
+// Cursor animation driven by audio currentTime
+function animateCursor(audio, text) {
+  if (!audio || audio.paused || audio.ended) return;
+  if (audio.duration) {
+    const progress = audio.currentTime / audio.duration;
+    cursorPos = snapGrapheme(text, Math.floor(progress * text.length));
+    refreshOut();
+  }
+  requestAnimationFrame(() => animateCursor(audio, text));
+}
+
+async function playViaGargantua(text) {
+  const resp = await fetch(`${GARGANTUA}/tts`, {
+    method:  'POST',
+    headers: {'Content-Type': 'application/json'},
+    body:    JSON.stringify({ text }),
+    signal:  AbortSignal.timeout(5000),
+  });
+  if (!resp.ok) throw new Error('Gargantua error');
+  const blob = await resp.blob();
+  const url  = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+  playAudio = audio;
+  audio.onended = () => {
+    URL.revokeObjectURL(url);
+    playAudio  = null;
+    cursorPos  = -1;
     setSndPlaying(false);
     refreshOut();
-    return;
-  }
+  };
+  audio.onerror = () => {
+    playAudio = null;
+    cursorPos = -1;
+    setSndPlaying(false);
+    refreshOut();
+  };
+  await audio.play();
+  animateCursor(audio, text);
+}
 
+function playViaSpeechSynthesis(text) {
+  if (!window.speechSynthesis) { setSndPlaying(false); return; }
+  const utt  = new SpeechSynthesisUtterance(text);
+  utt.lang   = 'ml-IN';
+  utt.rate   = 0.9;
+  utt.onboundary = e => {
+    if (e.name === 'word') {
+      readCharIdx = e.charIndex;
+      cursorPos   = snapGrapheme(text, e.charIndex);
+      refreshOut();
+    }
+  };
+  utt.onend  = () => { cursorPos = -1; setSndPlaying(false); refreshOut(); };
+  utt.onerror = () => { cursorPos = -1; setSndPlaying(false); refreshOut(); };
+  speechSynthesis.cancel();
+  setTimeout(() => speechSynthesis.speak(utt), 100);
+}
+
+sndBtn.addEventListener('click', async () => {
+  if (sndBtn.classList.contains('playing')) { stopPlayback(); return; }
   if (!st.text.trim()) return;
 
   readCharIdx = 0;
@@ -643,31 +703,11 @@ sndBtn.addEventListener('click', () => {
   refreshOut();
   setSndPlaying(true);
 
-  const utt = new SpeechSynthesisUtterance(st.text);
-  utt.lang  = 'ml-IN';
-  utt.rate  = 0.9;
-
-  utt.onboundary = e => {
-    if (e.name === 'word') {
-      readCharIdx = e.charIndex;
-      cursorPos   = snapGrapheme(st.text, e.charIndex);
-      refreshOut();
-    }
-  };
-  utt.onend = () => {
-    readCharIdx = st.text.length;
-    cursorPos   = -1;
-    setSndPlaying(false);
-    refreshOut();
-  };
-  utt.onerror = () => {
-    cursorPos = -1;
-    setSndPlaying(false);
-    refreshOut();
-  };
-
-  speechSynthesis.cancel();
-  setTimeout(() => speechSynthesis.speak(utt), 100); // Chrome needs a gap after cancel()
+  try {
+    await playViaGargantua(st.text);
+  } catch (_) {
+    playViaSpeechSynthesis(st.text);   // fallback when Gargantua not running
+  }
 });
 
 // ═══════════════════════════════════════════════════════════
