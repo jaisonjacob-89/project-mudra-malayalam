@@ -586,6 +586,7 @@ function deleteLast() {
     st.text   = trimmed;
     cursorPos = -1;
   }
+  if (!st.text) clearTTSCache();
   refreshOut();
   updateSuggestions();
 }
@@ -647,21 +648,42 @@ function animateCursor(audio, text) {
   requestAnimationFrame(() => animateCursor(audio, text));
 }
 
+// ── TTS cache — keyed by text hash, value = Blob URL ─────────────────────
+const ttsCache = new Map();
+
+function hashText(text) {
+  let h = 5381;
+  for (let i = 0; i < text.length; i++)
+    h = (((h << 5) + h) ^ text.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
+function clearTTSCache() {
+  for (const url of ttsCache.values()) URL.revokeObjectURL(url);
+  ttsCache.clear();
+}
+
 async function playViaGargantua(text) {
-  const resp = await fetch(`${GARGANTUA}/tts`, {
-    method:  'POST',
-    headers: {'Content-Type': 'application/json'},
-    body:    JSON.stringify({ text }),
-    signal:  AbortSignal.timeout(5000),
-  });
-  if (!resp.ok) throw new Error('Gargantua error');
-  const blob = await resp.blob();
-  const url  = URL.createObjectURL(blob);
+  const key = hashText(text);
+  let url = ttsCache.get(key);
+
+  if (!url) {
+    const resp = await fetch(`${GARGANTUA}/tts`, {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({ text }),
+      signal:  AbortSignal.timeout(5000),
+    });
+    if (!resp.ok) throw new Error('Gargantua error');
+    const blob = await resp.blob();
+    url = URL.createObjectURL(blob);
+    ttsCache.set(key, url);   // cache for re-use
+  }
+
   const audio = new Audio(url);
   playAudio = audio;
   audio.onended = () => {
-    URL.revokeObjectURL(url);
-    playAudio  = null;
+    playAudio  = null;        // keep URL in cache — do NOT revoke
     cursorPos  = -1;
     setSndPlaying(false);
     refreshOut();
