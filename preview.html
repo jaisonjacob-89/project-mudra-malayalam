@@ -532,7 +532,7 @@ function updateSuggestions() {
   const prefix = currentPrefix(st.text);
   const words  = prefixSearch(prefix, 6);
   renderSuggestions(words);
-  speakAfterCommit(prefix, words.slice(0, 3));
+  speakAfterCommit(prefix, words);
 }
 
 // ═══════════════════════════════════════════════════════════
