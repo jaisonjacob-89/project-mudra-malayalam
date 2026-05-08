@@ -48,6 +48,8 @@
     margin-left:6px;flex-shrink:0;transition:background .15s;
   }
   .send:hover{background:#1B5E20;}
+  .send.playing{background:#B71C1C;}
+  .send.playing:hover{background:#7F0000;}
   .send svg{width:17px;height:17px;fill:#fff;}
 
   .area{flex:1;position:relative;touch-action:none;}
@@ -113,8 +115,9 @@
 <div class="device">
   <div class="bar">
     <span id="out" class="ph"></span>
-    <button class="send" id="snd">
-      <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+    <button class="send" id="snd" title="Read aloud">
+      <svg id="icon-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+      <svg id="icon-stop" viewBox="0 0 24 24" style="display:none"><path d="M6 6h12v12H6z"/></svg>
     </button>
   </div>
   <div class="sug-bar" id="sug"></div>
@@ -557,16 +560,27 @@ function commitHighlighted() {
   if (seg?.char) commitChar(seg.char);
 }
 
-document.getElementById('snd').addEventListener('click', () => {
-  if (st.text.trim()) {
-    st.text = ''; refreshOut();
-    hintEl.style.color = 'rgba(255,255,255,.75)';
-    hintEl.style.display = '';
-    hintEl.textContent = '✓ Message sent';
-    setTimeout(() => {
-      hintEl.textContent = 'അക്ഷരം ചേർക്കാൻ വിരൽ ഉയർത്തുക · സബ് മെനു ലഭിക്കാൻ ഒരു സെക്കൻഡ് അമർത്തിപ്പിടിക്കുക';
-      hintEl.style.color = 'rgba(255,255,255,.38)';
-    }, 1800);
+const sndBtn      = document.getElementById('snd');
+const iconPlay    = document.getElementById('icon-play');
+const iconStop    = document.getElementById('icon-stop');
+
+function setSndPlaying(on) {
+  iconPlay.style.display = on ? 'none' : '';
+  iconStop.style.display = on ? ''     : 'none';
+  sndBtn.classList.toggle('playing', on);
+}
+
+sndBtn.addEventListener('click', () => {
+  if (sndBtn.classList.contains('playing')) {
+    speechSynthesis.cancel();
+    setSndPlaying(false);
+  } else if (st.text.trim()) {
+    const utt = new SpeechSynthesisUtterance(st.text);
+    utt.lang = 'ml-IN'; utt.rate = 0.9;
+    utt.onend  = () => setSndPlaying(false);
+    utt.onerror = () => setSndPlaying(false);
+    setSndPlaying(true);
+    speechSynthesis.speak(utt);
   }
 });
 
