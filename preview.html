@@ -594,7 +594,7 @@ let ttsTimer = null;
 function charToFile(char) {
   return 'Letter%20sounds/' +
     [...char].map(c => c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')).join('_') +
-    '.mp3';
+    '.mp3?v=2';
 }
 
 function isMalayalam(char) {
@@ -613,7 +613,7 @@ function speak(label) {
 }
 
 function playInstructions() {
-  const audio = new Audio('Letter%20sounds/instructions.mp3');
+  const audio = new Audio('Letter%20sounds/instructions.mp3?v=2');
   audio.play().catch(() => {});
 }
 
