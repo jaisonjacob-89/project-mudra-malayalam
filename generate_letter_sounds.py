@@ -1,40 +1,32 @@
 #!/usr/bin/env python3
 """
-Generate Malayalam TTS MP3 files for Project Mudra using edge-tts.
-No API key or registration required.
+Generate Malayalam TTS MP3 files for Project Mudra via Gargantua.
+
+Requires Gargantua to be running:
+    python3 gargantua.py
 
 Usage:
-    pip install edge-tts
     python3 generate_letter_sounds.py
 
 Outputs 70 MP3 files into the 'Letter sounds/' folder:
   - instructions.mp3        (app-open instruction sentence)
   - <unicode-hex>.mp3       (one file per unique keyboard character)
 
-File naming: each character's Unicode codepoints in hex, joined by underscores.
-  e.g.  ക  → 0D15.mp3
-        ക്ക → 0D15_0D4D_0D15.mp3
-
-Re-running the script skips files that already exist, so it is safe to resume
-after a failure without re-generating completed files.
+Re-running skips files that already exist — safe to resume after failure.
 """
 
-import asyncio
 import os
 import sys
+import urllib.request
+import urllib.error
+import json
 
-try:
-    import edge_tts
-except ImportError:
-    sys.exit("Missing dependency: run  pip install edge-tts  then retry.")
-
-# ── Voice config ──────────────────────────────────────────────────────────
-VOICE = "ml-IN-SobhanaNeural"  # Microsoft Edge neural Malayalam female voice
-RATE  = "-10%"                 # Slightly slower for clarity
+# ── Gargantua endpoint ────────────────────────────────────────────────────
+GARGANTUA = 'http://localhost:5050'
 
 # ── Output folder ─────────────────────────────────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-OUT_DIR    = os.path.join(SCRIPT_DIR, "Letter sounds")
+OUT_DIR    = os.path.join(SCRIPT_DIR, 'Letter sounds')
 
 # ── All unique keyboard characters (inner + outer ring + all sub-menus) ───
 CHARS = [
@@ -59,12 +51,11 @@ CHARS = [
 
 # ── Instruction sentence (read aloud on app open) ─────────────────────────
 INSTRUCTIONS_TEXT = (
-    "അക്ഷരം ചേർക്കാൻ വിരൽ ഉയർത്തുക. "
-    "സബ് മെനു ലഭിക്കാൻ ഒരു സെക്കൻഡ് അമർത്തിപ്പിടിക്കുക."
+    'അക്ഷരം ചേർക്കാൻ വിരൽ ഉയർത്തുക. '
+    'സബ് മെനു ലഭിക്കാൻ ഒരു സെക്കൻഡ് അമർത്തിപ്പിടിക്കുക.'
 )
 
-
-# Spoken labels for characters that can't be pronounced in isolation
+# ── Spoken labels for characters that can't be pronounced in isolation ────
 SPOKEN_OVERRIDE = {
     'ൠ': 'ദീർഘ ഋ',
     'ം': 'അനുസ്വാരം',
@@ -78,18 +69,42 @@ def char_to_filename(char: str) -> str:
     return '_'.join(f'{ord(c):04X}' for c in char) + '.mp3'
 
 
-async def synthesize(text: str, out_path: str) -> None:
-    spoken = SPOKEN_OVERRIDE.get(text, text)
-    communicate = edge_tts.Communicate(spoken, VOICE, rate=RATE)
-    await communicate.save(out_path)
+def check_gargantua():
+    try:
+        with urllib.request.urlopen(f'{GARGANTUA}/health', timeout=3) as r:
+            data = json.loads(r.read())
+            print(f"Gargantua  : running — voice: {data.get('voice', '?')}")
+            return True
+    except Exception:
+        print('ERROR: Gargantua is not running.')
+        print('       Start it with:  python3 gargantua.py')
+        return False
 
 
-async def main():
+def synthesize_via_gargantua(text: str, out_path: str) -> None:
+    spoken  = SPOKEN_OVERRIDE.get(text, text)
+    payload = json.dumps({'text': spoken}).encode()
+    req = urllib.request.Request(
+        f'{GARGANTUA}/tts',
+        data=payload,
+        headers={'Content-Type': 'application/json'},
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        audio = resp.read()
+    if not audio:
+        raise RuntimeError('Empty response from Gargantua')
+    with open(out_path, 'wb') as f:
+        f.write(audio)
+
+
+def main():
+    if not check_gargantua():
+        sys.exit(1)
+
     os.makedirs(OUT_DIR, exist_ok=True)
-    print(f"Voice      : {VOICE}")
     print(f"Output dir : {OUT_DIR}\n")
 
-    tasks = [("instructions.mp3", INSTRUCTIONS_TEXT)] + \
+    tasks = [('instructions.mp3', INSTRUCTIONS_TEXT)] + \
             [(char_to_filename(c), c) for c in CHARS]
 
     total   = len(tasks)
@@ -100,26 +115,26 @@ async def main():
     for i, (filename, text) in enumerate(tasks, 1):
         out_path = os.path.join(OUT_DIR, filename)
         if os.path.exists(out_path):
-            print(f"[{i:02}/{total}] SKIP  {filename}")
+            print(f'[{i:02}/{total}] SKIP  {filename}')
             skipped += 1
             continue
         try:
-            await synthesize(text, out_path)
-            print(f"[{i:02}/{total}] OK    {filename}  ← {text!r}")
+            synthesize_via_gargantua(text, out_path)
+            print(f'[{i:02}/{total}] OK    {filename}  ← {text!r}')
             success += 1
         except Exception as e:
-            print(f"[{i:02}/{total}] FAIL  {filename}: {e}")
+            print(f'[{i:02}/{total}] FAIL  {filename}: {e}')
             failed.append(filename)
 
     print(f"\n{'─'*50}")
-    print(f"Generated : {success}")
-    print(f"Skipped   : {skipped}")
-    print(f"Failed    : {len(failed)}")
+    print(f'Generated : {success}')
+    print(f'Skipped   : {skipped}')
+    print(f'Failed    : {len(failed)}')
     if failed:
-        print("Failed files:", ", ".join(failed))
+        print('Failed files:', ', '.join(failed))
     print(f"{'─'*50}")
-    print(f"Files are in: {OUT_DIR}")
+    print(f'Files are in: {OUT_DIR}')
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
+if __name__ == '__main__':
+    main()
