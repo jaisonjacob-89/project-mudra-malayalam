@@ -123,6 +123,7 @@
   }
   .sug-chip:hover{background:rgba(255,255,255,.22);}
   .sug-chip:active{background:#FFD54F;color:#1A0A00;border-color:#FFD54F;}
+  .sug-chip.selected{background:rgba(255,213,79,.35);border-color:#FFD54F;color:#fff;}
 
   .legend{display:flex;gap:20px;font-size:11px;
     color:rgba(255,255,255,.45);font-family:'Segoe UI',sans-serif;}
@@ -298,6 +299,15 @@ let outerRotSet = false;
 
 let targetScale = 0, rafId = null;
 let isDown = false;
+
+// Suggestion navigation state
+let pdX = 0, pdY = 0;          // pointerdown canvas position
+let isSwiping = false;          // true while a horizontal swipe is in progress
+let wheelDelayTimer = null;     // 80 ms gate before wheel appears
+let sugSelectedIdx = -1;        // highlighted chip index (-1 = none)
+let currentSuggestions = [];    // live copy of rendered suggestions
+let lastTapTime = 0;            // timestamp of previous pointerup (double-tap)
+const DOUBLE_TAP_MS = 350;      // max gap between taps to count as double
 let lpTimer = null, lpAnimId = null;
 // 0 = inside ring, 1 = beyond right (space), -1 = beyond left (delete)
 let beyondDir = 0;
@@ -528,9 +538,66 @@ function renderSuggestions(words) {
   });
 }
 
+function updateSugHighlight() {
+  sugEl.querySelectorAll('.sug-chip').forEach((chip, i) =>
+    chip.classList.toggle('selected', i === sugSelectedIdx));
+}
+
+function navigateSuggestion(dir) {
+  if (!currentSuggestions.length) return false;
+  const n = currentSuggestions.length;
+  sugSelectedIdx = sugSelectedIdx === -1
+    ? (dir > 0 ? 0 : n - 1)
+    : Math.max(0, Math.min(n - 1, sugSelectedIdx + dir));
+  updateSugHighlight();
+  speakSingleSuggestion(currentSuggestions[sugSelectedIdx]);
+  return true;
+}
+
+async function speakSingleSuggestion(word) {
+  clearTimeout(sugSpeakTimer);
+  ttsAudio.pause();
+  if (sugAudio) { sugAudio.pause(); sugAudio = null; }
+  try {
+    const key = hashText('nav\x00' + word);
+    let cached = ttsCache.get(key);
+    if (!cached) {
+      const resp = await fetch(`${GARGANTUA}/tts`, {
+        method:  'POST',
+        headers: {'Content-Type': 'application/json'},
+        body:    JSON.stringify({ text: word }),
+        signal:  AbortSignal.timeout(10000),
+      });
+      if (!resp.ok) throw new Error('Gargantua error');
+      const data = await resp.json();
+      const bin  = atob(data.audio);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([bytes], {type: 'audio/mpeg'}));
+      cached = { url, boundaries: [] };
+      ttsCache.set(key, cached);
+    }
+    const audio = new Audio(cached.url);
+    sugAudio = audio;
+    audio.onended = () => { if (sugAudio === audio) sugAudio = null; };
+    audio.onerror = () => { if (sugAudio === audio) sugAudio = null; };
+    audio.play().catch(() => {});
+  } catch (_) {
+    if (window.speechSynthesis) {
+      speechSynthesis.cancel();
+      const utt = new SpeechSynthesisUtterance(word);
+      utt.lang = 'ml-IN'; utt.rate = 0.9;
+      speechSynthesis.speak(utt);
+    }
+  }
+}
+
 function updateSuggestions() {
   const prefix = currentPrefix(st.text);
   const words  = prefixSearch(prefix, 6);
+  currentSuggestions = words;
+  sugSelectedIdx = -1;
+  updateSugHighlight();
   renderSuggestions(words);
   speakAfterCommit(prefix, words);
 }
@@ -898,14 +965,45 @@ cv.addEventListener('pointerdown', e => {
   e.preventDefault();
   if (!inTriggerZone(e.offsetX, e.offsetY)) return;
   isDown = true;
+  isSwiping = false;
+  pdX = e.offsetX; pdY = e.offsetY;
   beyondDir = 0;
   innerRotSet = false; outerRotSet = false;
   resetRings();
-  showWheel(e.offsetX, e.offsetY);
+  // Delay wheel by 80 ms so a fast horizontal swipe can be caught first
+  clearTimeout(wheelDelayTimer);
+  wheelDelayTimer = setTimeout(() => {
+    wheelDelayTimer = null;
+    if (isDown && !isSwiping) showWheel(pdX, pdY);
+  }, 80);
 });
 
 cv.addEventListener('pointermove', e => {
-  if (!isDown || !st.visible) return;
+  if (!isDown) return;
+
+  // ── Pre-wheel swipe detection (while wheel delay is pending) ──────────
+  if (wheelDelayTimer !== null) {
+    const dx = e.offsetX - pdX, dy = e.offsetY - pdY;
+    const adx = Math.abs(dx), ady = Math.abs(dy);
+    if (adx >= 35 && adx >= ady * 2) {
+      // Horizontal swipe detected — cancel wheel, navigate suggestion
+      if (navigateSuggestion(dx > 0 ? 1 : -1)) {
+        isSwiping = true;
+        clearTimeout(wheelDelayTimer); wheelDelayTimer = null;
+      } else {
+        // No suggestions — show wheel immediately instead
+        clearTimeout(wheelDelayTimer); wheelDelayTimer = null;
+        showWheel(pdX, pdY);
+      }
+    } else if (ady > 20) {
+      // Clearly not a swipe — show wheel now
+      clearTimeout(wheelDelayTimer); wheelDelayTimer = null;
+      showWheel(pdX, pdY);
+    }
+    return;
+  }
+
+  if (isSwiping || !st.visible) return;
 
   // Determine which ring the finger is in (by distance only, rotation-independent)
   const dx = e.offsetX - st.cx, dy = e.offsetY - st.cy;
@@ -969,7 +1067,25 @@ cv.addEventListener('pointermove', e => {
 cv.addEventListener('pointerup', e => {
   if (!isDown) return;
   isDown = false;
+  clearTimeout(wheelDelayTimer); wheelDelayTimer = null;
   cancelLp();
+
+  // Finish horizontal swipe — gesture already handled in pointermove
+  if (isSwiping) { isSwiping = false; return; }
+
+  // Double-tap → accept currently highlighted suggestion
+  const now = performance.now();
+  if (now - lastTapTime < DOUBLE_TAP_MS && sugSelectedIdx >= 0 && currentSuggestions.length) {
+    lastTapTime = 0;
+    acceptSuggestion(currentSuggestions[sugSelectedIdx]);
+    sugSelectedIdx = -1;
+    updateSugHighlight();
+    if (st.visible) hideWheel();
+    return;
+  }
+  lastTapTime = now;
+
+  if (!st.visible) return;   // quick tap (< 80 ms) — wheel never shown, nothing to commit
 
   const dx   = e.offsetX - st.cx;
   const dy   = e.offsetY - st.cy;
@@ -977,14 +1093,11 @@ cv.addEventListener('pointerup', e => {
   const R    = R_OUT * st.scale;
 
   if (dist > R) {
-    // Beyond outer ring → space (right) or backspace (left)
     if (dx > 0) commitChar(' ');
     else        deleteLast();
   } else if (dist < R * F_DEAD) {
-    // Center tap → reset sub-menus
     if (st.innerSub || st.outerSub) resetRings();
   } else {
-    // Inside rings → commit highlighted character
     commitHighlighted();
   }
 
@@ -992,7 +1105,13 @@ cv.addEventListener('pointerup', e => {
 });
 
 cv.addEventListener('pointerleave', () => {
-  if (isDown) { isDown = false; cancelLp(); hideWheel(); }
+  if (isDown) {
+    isDown = false;
+    isSwiping = false;
+    clearTimeout(wheelDelayTimer); wheelDelayTimer = null;
+    cancelLp();
+    if (st.visible) hideWheel();
+  }
 });
 
 // ═══════════════════════════════════════════════════════════
