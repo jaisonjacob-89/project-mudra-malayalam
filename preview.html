@@ -499,7 +499,9 @@ function renderSuggestions(words) {
 
 function updateSuggestions() {
   const prefix = currentPrefix(st.text);
-  renderSuggestions(prefixSearch(prefix));
+  const words  = prefixSearch(prefix);
+  renderSuggestions(words);
+  speakSuggestions(words);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -784,6 +786,23 @@ function speak(label) {
     ttsAudio.load();
     ttsAudio.play().catch(() => {});
   }, 80);
+}
+
+// Read word suggestions aloud after each character commit.
+// Uses speechSynthesis (fast, no network) with a 300 ms delay so the
+// pre-recorded letter sound finishes before the suggestions are spoken.
+let sugSpeakTimer = null;
+function speakSuggestions(words) {
+  clearTimeout(sugSpeakTimer);
+  if (!words.length || !window.speechSynthesis) return;
+  if (sndBtn.classList.contains('playing')) return;  // don't cut across readback
+  sugSpeakTimer = setTimeout(() => {
+    speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(words.join('  '));
+    utt.lang  = 'ml-IN';
+    utt.rate  = 0.9;
+    speechSynthesis.speak(utt);
+  }, 300);
 }
 
 function playInstructions() {
