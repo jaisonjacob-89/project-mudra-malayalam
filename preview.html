@@ -666,8 +666,8 @@ sndBtn.addEventListener('click', () => {
     refreshOut();
   };
 
-  speechSynthesis.cancel();          // clear any stuck queue first
-  speechSynthesis.speak(utt);
+  speechSynthesis.cancel();
+  setTimeout(() => speechSynthesis.speak(utt), 100); // Chrome needs a gap after cancel()
 });
 
 // ═══════════════════════════════════════════════════════════
