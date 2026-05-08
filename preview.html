@@ -41,6 +41,15 @@
     animation:blink .9s step-start infinite;
   }
   @keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+  #out.nocaret::after{content:none;}
+  #out .rd {color:#1A1A1A;}
+  #out .ur {color:rgba(26,26,26,0.35);}
+  #out .pcur{
+    display:inline-block;width:2px;height:1.1em;
+    background:#1A1A1A;vertical-align:middle;margin:0 1px;
+    animation:blink .9s step-start infinite;
+  }
+  #out.playing .pcur{background:#2E7D32;}
   .send{
     background:#2E7D32;border:none;border-radius:7px;
     width:34px;height:34px;cursor:pointer;
@@ -271,6 +280,22 @@ let lpTimer = null, lpAnimId = null;
 // 0 = inside ring, 1 = beyond right (space), -1 = beyond left (delete)
 let beyondDir = 0;
 let innerAlpha = 0, outerAlpha = 0;
+let cursorPos  = -1;   // -1 = end of text; ≥0 = UTF-16 index insertion point
+let readCharIdx = 0;   // charIndex from last onboundary event
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function snapGrapheme(text, idx) {
+  const segs = [...segmenter.segment(text)];
+  let pos = 0;
+  for (const seg of segs) {
+    if (pos + seg.segment.length > idx) return pos;
+    pos += seg.segment.length;
+  }
+  return pos;
+}
 let innerTargetAlpha = 0, outerTargetAlpha = 0;
 
 // ═══════════════════════════════════════════════════════════
@@ -534,23 +559,52 @@ function composeText(current, newStr) {
 //  TEXT COMMIT
 // ═══════════════════════════════════════════════════════════
 function commitChar(str) {
-  st.text = composeText(st.text, str);
+  if (cursorPos >= 0 && cursorPos < st.text.length) {
+    const before   = st.text.slice(0, cursorPos);
+    const after    = st.text.slice(cursorPos);
+    const composed = composeText(before, str);
+    cursorPos      = composed.length;
+    st.text        = composed + after;
+  } else {
+    st.text   = composeText(st.text, str);
+    cursorPos = -1;
+  }
   refreshOut();
   updateSuggestions();
   if (st.innerSub) { st.innerSub = false; st.innerSegs = ROOT_INNER; }
   if (st.outerSub) { st.outerSub = false; st.outerSegs = ROOT_OUTER; }
 }
 function deleteLast() {
-  const segs = [...segmenter.segment(st.text)];
-  st.text = segs.slice(0, -1).map(s => s.segment).join('');
+  const target = cursorPos >= 0 && cursorPos < st.text.length
+    ? st.text.slice(0, cursorPos) : st.text;
+  const segs    = [...segmenter.segment(target)];
+  const trimmed = segs.slice(0, -1).map(s => s.segment).join('');
+  if (cursorPos >= 0 && cursorPos < st.text.length) {
+    cursorPos = trimmed.length;
+    st.text   = trimmed + st.text.slice(cursorPos + (target.length - trimmed.length));
+  } else {
+    st.text   = trimmed;
+    cursorPos = -1;
+  }
   refreshOut();
   updateSuggestions();
 }
 function refreshOut() {
-  if (st.text) {
-    outEl.textContent = st.text; outEl.classList.remove('ph');
+  const mid = cursorPos >= 0 && cursorPos < st.text.length;
+  if (mid) {
+    outEl.innerHTML =
+      `<span class="rd">${escHtml(st.text.slice(0, cursorPos))}</span>` +
+      `<span class="pcur"></span>` +
+      `<span class="ur">${escHtml(st.text.slice(cursorPos))}</span>`;
+    outEl.classList.remove('ph');
+    outEl.classList.add('nocaret');
+  } else if (st.text) {
+    outEl.textContent = st.text;
+    outEl.classList.remove('ph', 'nocaret');
   } else {
-    outEl.textContent = ''; outEl.classList.add('ph');
+    outEl.textContent = '';
+    outEl.classList.add('ph');
+    outEl.classList.remove('nocaret');
   }
 }
 function commitHighlighted() {
@@ -568,18 +622,37 @@ function setSndPlaying(on) {
   iconPlay.style.display = on ? 'none' : '';
   iconStop.style.display = on ? ''     : 'none';
   sndBtn.classList.toggle('playing', on);
+  outEl.classList.toggle('playing', on);
 }
 
 sndBtn.addEventListener('click', () => {
   if (sndBtn.classList.contains('playing')) {
     speechSynthesis.cancel();
+    cursorPos = snapGrapheme(st.text, readCharIdx);
     setSndPlaying(false);
+    refreshOut();
   } else if (st.text.trim()) {
-    const utt = new SpeechSynthesisUtterance(st.text);
-    utt.lang = 'ml-IN'; utt.rate = 0.9;
-    utt.onend  = () => setSndPlaying(false);
-    utt.onerror = () => setSndPlaying(false);
+    readCharIdx = 0;
+    cursorPos   = 0;
+    const utt   = new SpeechSynthesisUtterance(st.text);
+    utt.lang    = 'ml-IN'; utt.rate = 0.9;
+    utt.onboundary = e => {
+      readCharIdx = e.charIndex;
+      cursorPos   = snapGrapheme(st.text, e.charIndex);
+      refreshOut();
+    };
+    utt.onend = () => {
+      cursorPos = -1;
+      setSndPlaying(false);
+      refreshOut();
+    };
+    utt.onerror = () => {
+      cursorPos = -1;
+      setSndPlaying(false);
+      refreshOut();
+    };
     setSndPlaying(true);
+    refreshOut();
     speechSynthesis.speak(utt);
   }
 });
