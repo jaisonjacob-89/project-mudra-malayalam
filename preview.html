@@ -586,41 +586,38 @@ function playSound(snd) {
 function playActivationSound() { playSound(sndActivate); }
 
 // ═══════════════════════════════════════════════════════════
+//  TTS — pre-recorded MP3s from Letter sounds/
+// ═══════════════════════════════════════════════════════════
 const ttsAudio = new Audio();
-ttsAudio.crossOrigin = 'anonymous';
-let mlVoice = null;
 let ttsTimer = null;
 
-function initVoices() {
-  const vv = window.speechSynthesis ? speechSynthesis.getVoices() : [];
-  mlVoice = vv.find(v => /^ml/i.test(v.lang)) || null;
+function charToFile(char) {
+  return 'Letter%20sounds/' +
+    [...char].map(c => c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')).join('_') +
+    '.mp3';
 }
-if (window.speechSynthesis) {
-  initVoices();
-  speechSynthesis.onvoiceschanged = initVoices;
+
+function isMalayalam(char) {
+  return char && [...char].every(c => { const cp = c.codePointAt(0); return cp >= 0x0D00 && cp <= 0x0D7F; });
 }
 
 function speak(label) {
-  if (!label || label === '–') return;
+  if (!label || label === '–' || !isMalayalam(label)) return;
   clearTimeout(ttsTimer);
   ttsTimer = setTimeout(() => {
-    if (mlVoice) {
-      speechSynthesis.cancel();
-      setTimeout(() => {
-        const utt = new SpeechSynthesisUtterance(label);
-        utt.voice = mlVoice; utt.lang = 'ml-IN'; utt.rate = 0.9;
-        speechSynthesis.speak(utt);
-      }, 60);
-    } else {
-      // Google Translate TTS — works on GitHub Pages / locally
-      ttsAudio.pause();
-      ttsAudio.src = 'https://translate.google.com/translate_tts?ie=UTF-8&tl=ml&client=tw-ob&q='
-                   + encodeURIComponent(label);
-      ttsAudio.load();
-      ttsAudio.play().catch(() => {});
-    }
+    ttsAudio.pause();
+    ttsAudio.src = charToFile(label);
+    ttsAudio.load();
+    ttsAudio.play().catch(() => {});
   }, 80);
 }
+
+function playInstructions() {
+  const audio = new Audio('Letter%20sounds/instructions.mp3');
+  audio.play().catch(() => {});
+}
+
+window.addEventListener('load', () => setTimeout(playInstructions, 800));
 
 // ═══════════════════════════════════════════════════════════
 //  POINTER EVENTS
