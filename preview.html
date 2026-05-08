@@ -501,7 +501,7 @@ function updateSuggestions() {
   const prefix = currentPrefix(st.text);
   const words  = prefixSearch(prefix);
   renderSuggestions(words);
-  speakSuggestions(words);
+  speakAfterCommit(prefix, words);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -735,6 +735,10 @@ sndBtn.addEventListener('click', async () => {
   if (sndBtn.classList.contains('playing')) { stopPlayback(); return; }
   if (!st.text.trim()) return;
 
+  // Silence any suggestion clip before starting full readback
+  clearTimeout(sugSpeakTimer);
+  if (sugAudio) { sugAudio.pause(); sugAudio = null; }
+
   cursorPos = 0;
   refreshOut();
   setSndPlaying(true);
@@ -788,20 +792,64 @@ function speak(label) {
   }, 80);
 }
 
-// Read word suggestions aloud after each character commit.
-// Uses speechSynthesis (fast, no network) with a 300 ms delay so the
-// pre-recorded letter sound finishes before the suggestions are spoken.
+// After each character commit: read the current prefix then "നിർദ്ദേശങ്ങൾ: word1, word2 …"
+// via Gargantua (Shobhana's voice), with speechSynthesis as offline fallback.
 let sugSpeakTimer = null;
-function speakSuggestions(words) {
+let sugAudio      = null;
+
+async function speakAfterCommit(prefix, words) {
   clearTimeout(sugSpeakTimer);
-  if (!words.length || !window.speechSynthesis) return;
-  if (sndBtn.classList.contains('playing')) return;  // don't cut across readback
-  sugSpeakTimer = setTimeout(() => {
-    speechSynthesis.cancel();
-    const utt = new SpeechSynthesisUtterance(words.join('  '));
-    utt.lang  = 'ml-IN';
-    utt.rate  = 0.9;
-    speechSynthesis.speak(utt);
+  if (sndBtn.classList.contains('playing')) return;
+
+  const parts = [];
+  if (prefix) parts.push(prefix);
+  if (words.length) parts.push('നിർദ്ദേശങ്ങൾ: ' + words.join(', '));
+  if (!parts.length) return;
+
+  const text = parts.join('. ');
+
+  sugSpeakTimer = setTimeout(async () => {
+    // Stop the letter-sound and any in-flight suggestion clip
+    ttsAudio.pause();
+    if (sugAudio) { sugAudio.pause(); sugAudio = null; }
+    if (sndBtn.classList.contains('playing')) return;
+
+    try {
+      const key = hashText('sug\x00' + text);
+      let cached = ttsCache.get(key);
+
+      if (!cached) {
+        const resp = await fetch(`${GARGANTUA}/tts`, {
+          method:  'POST',
+          headers: {'Content-Type': 'application/json'},
+          body:    JSON.stringify({ text }),
+          signal:  AbortSignal.timeout(10000),
+        });
+        if (!resp.ok) throw new Error('Gargantua error');
+        const data = await resp.json();
+        const bin  = atob(data.audio);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const url = URL.createObjectURL(new Blob([bytes], {type: 'audio/mpeg'}));
+        cached = { url, boundaries: [] };
+        ttsCache.set(key, cached);
+      }
+
+      const audio = new Audio(cached.url);
+      sugAudio = audio;
+      audio.onended = () => { if (sugAudio === audio) sugAudio = null; };
+      audio.onerror = () => { if (sugAudio === audio) sugAudio = null; };
+      audio.play().catch(() => {});
+    } catch (_) {
+      // Gargantua offline — fall back to browser speechSynthesis
+      if (window.speechSynthesis) {
+        speechSynthesis.cancel();
+        const utt = new SpeechSynthesisUtterance(text);
+        utt.lang = 'ml-IN';
+        utt.rate = 0.9;
+        speechSynthesis.speak(utt);
+      }
+    }
   }, 300);
 }
 
