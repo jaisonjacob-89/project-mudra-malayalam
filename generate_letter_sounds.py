@@ -29,7 +29,7 @@ except ImportError:
     sys.exit("Missing dependency: run  pip install edge-tts  then retry.")
 
 # ── Voice config ──────────────────────────────────────────────────────────
-VOICE = "ml-IN-MidhunNeural"   # Microsoft Edge neural Malayalam voice
+VOICE = "ml-IN-SobhanaNeural"  # Microsoft Edge neural Malayalam female voice
 RATE  = "-10%"                 # Slightly slower for clarity
 
 # ── Output folder ─────────────────────────────────────────────────────────
