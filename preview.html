@@ -600,7 +600,7 @@ function refreshOut() {
     outEl.classList.add('nocaret');
   } else if (st.text) {
     outEl.textContent = st.text;
-    outEl.classList.remove('ph', 'nocaret');
+    outEl.classList.remove('ph'); outEl.classList.remove('nocaret');
   } else {
     outEl.textContent = '';
     outEl.classList.add('ph');
@@ -621,40 +621,53 @@ const iconStop    = document.getElementById('icon-stop');
 function setSndPlaying(on) {
   iconPlay.style.display = on ? 'none' : '';
   iconStop.style.display = on ? ''     : 'none';
-  sndBtn.classList.toggle('playing', on);
-  outEl.classList.toggle('playing', on);
+  on ? sndBtn.classList.add('playing')    : sndBtn.classList.remove('playing');
+  on ? outEl.classList.add('playing')     : outEl.classList.remove('playing');
 }
 
 sndBtn.addEventListener('click', () => {
+  if (!window.speechSynthesis) return;
+
   if (sndBtn.classList.contains('playing')) {
     speechSynthesis.cancel();
     cursorPos = snapGrapheme(st.text, readCharIdx);
     setSndPlaying(false);
     refreshOut();
-  } else if (st.text.trim()) {
-    readCharIdx = 0;
-    cursorPos   = 0;
-    const utt   = new SpeechSynthesisUtterance(st.text);
-    utt.lang    = 'ml-IN'; utt.rate = 0.9;
-    utt.onboundary = e => {
+    return;
+  }
+
+  if (!st.text.trim()) return;
+
+  readCharIdx = 0;
+  cursorPos   = 0;
+  refreshOut();
+  setSndPlaying(true);
+
+  const utt = new SpeechSynthesisUtterance(st.text);
+  utt.lang  = 'ml-IN';
+  utt.rate  = 0.9;
+
+  utt.onboundary = e => {
+    if (e.name === 'word') {
       readCharIdx = e.charIndex;
       cursorPos   = snapGrapheme(st.text, e.charIndex);
       refreshOut();
-    };
-    utt.onend = () => {
-      cursorPos = -1;
-      setSndPlaying(false);
-      refreshOut();
-    };
-    utt.onerror = () => {
-      cursorPos = -1;
-      setSndPlaying(false);
-      refreshOut();
-    };
-    setSndPlaying(true);
+    }
+  };
+  utt.onend = () => {
+    readCharIdx = st.text.length;
+    cursorPos   = -1;
+    setSndPlaying(false);
     refreshOut();
-    speechSynthesis.speak(utt);
-  }
+  };
+  utt.onerror = () => {
+    cursorPos = -1;
+    setSndPlaying(false);
+    refreshOut();
+  };
+
+  speechSynthesis.cancel();          // clear any stuck queue first
+  speechSynthesis.speak(utt);
 });
 
 // ═══════════════════════════════════════════════════════════
