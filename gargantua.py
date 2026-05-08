@@ -11,13 +11,13 @@ Server runs on http://localhost:5050
 preview.html calls POST /tts with {"text": "..."} and plays the returned MP3.
 """
 
+import base64
 import io
 import sys
 
 try:
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import StreamingResponse
     from pydantic import BaseModel
     import uvicorn
 except ImportError:
@@ -56,16 +56,31 @@ async def health():
 
 @app.post("/tts")
 async def synthesize(req: TTSRequest):
-    if not req.text.strip():
-        return StreamingResponse(io.BytesIO(), media_type="audio/mpeg")
+    text = req.text.strip()
+    if not text:
+        return {"audio": "", "boundaries": []}
 
-    buf = io.BytesIO()
-    communicate = edge_tts.Communicate(req.text.strip(), VOICE, rate=RATE)
+    buf         = io.BytesIO()
+    boundaries  = []
+    search_from = 0
+
+    communicate = edge_tts.Communicate(text, VOICE, rate=RATE)
     async for chunk in communicate.stream():
         if chunk["type"] == "audio":
             buf.write(chunk["data"])
-    buf.seek(0)
-    return StreamingResponse(buf, media_type="audio/mpeg")
+        elif chunk["type"] == "WordBoundary":
+            word     = chunk.get("text", "")
+            time_ms  = chunk["offset"] // 10000   # 100-ns ticks → ms
+            if word:
+                idx = text.find(word, search_from)
+                if idx >= 0:
+                    boundaries.append({"charIndex": idx, "timeMs": time_ms})
+                    search_from = idx + len(word)
+
+    return {
+        "audio":      base64.b64encode(buf.getvalue()).decode(),
+        "boundaries": boundaries,
+    }
 
 
 # ── Entry point ───────────────────────────────────────────────────────────

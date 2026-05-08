@@ -281,7 +281,7 @@ let lpTimer = null, lpAnimId = null;
 let beyondDir = 0;
 let innerAlpha = 0, outerAlpha = 0;
 let cursorPos  = -1;   // -1 = end of text; ≥0 = UTF-16 index insertion point
-let readCharIdx = 0;   // charIndex from last onboundary event
+const pendingCursorTimers = [];
 
 function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -629,23 +629,17 @@ function setSndPlaying(on) {
   on ? outEl.classList.add('playing')   : outEl.classList.remove('playing');
 }
 
-function stopPlayback() {
-  if (playAudio) { playAudio.pause(); playAudio = null; }
-  if (window.speechSynthesis) speechSynthesis.cancel();
-  cursorPos = snapGrapheme(st.text, readCharIdx);
-  setSndPlaying(false);
-  refreshOut();
+function cancelCursorTimers() {
+  pendingCursorTimers.forEach(id => clearTimeout(id));
+  pendingCursorTimers.length = 0;
 }
 
-// Cursor animation driven by audio currentTime
-function animateCursor(audio, text) {
-  if (!audio || audio.paused || audio.ended) return;
-  if (audio.duration) {
-    const progress = audio.currentTime / audio.duration;
-    cursorPos = snapGrapheme(text, Math.floor(progress * text.length));
-    refreshOut();
-  }
-  requestAnimationFrame(() => animateCursor(audio, text));
+function stopPlayback() {
+  cancelCursorTimers();
+  if (playAudio) { playAudio.pause(); playAudio = null; }
+  if (window.speechSynthesis) speechSynthesis.cancel();
+  setSndPlaying(false);
+  refreshOut();
 }
 
 // ── TTS cache — keyed by text hash, value = Blob URL ─────────────────────
@@ -665,37 +659,57 @@ function clearTTSCache() {
 
 async function playViaGargantua(text) {
   const key = hashText(text);
-  let url = ttsCache.get(key);
+  let cached = ttsCache.get(key);
 
-  if (!url) {
+  if (!cached) {
     const resp = await fetch(`${GARGANTUA}/tts`, {
       method:  'POST',
       headers: {'Content-Type': 'application/json'},
       body:    JSON.stringify({ text }),
-      signal:  AbortSignal.timeout(5000),
+      signal:  AbortSignal.timeout(10000),
     });
     if (!resp.ok) throw new Error('Gargantua error');
-    const blob = await resp.blob();
-    url = URL.createObjectURL(blob);
-    ttsCache.set(key, url);   // cache for re-use
+    const data = await resp.json();
+    // Decode base64 → Blob URL
+    const bin  = atob(data.audio);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([bytes], {type: 'audio/mpeg'}));
+    cached = { url, boundaries: data.boundaries || [] };
+    ttsCache.set(key, cached);
   }
 
-  const audio = new Audio(url);
+  cancelCursorTimers();
+  const audio = new Audio(cached.url);
   playAudio = audio;
+
+  // Schedule cursor jumps at the exact millisecond each word starts
+  audio.onplay = () => {
+    cached.boundaries.forEach(({charIndex, timeMs}) => {
+      const id = setTimeout(() => {
+        if (playAudio !== audio) return;
+        cursorPos = snapGrapheme(text, charIndex);
+        refreshOut();
+      }, timeMs);
+      pendingCursorTimers.push(id);
+    });
+  };
+
   audio.onended = () => {
-    playAudio  = null;        // keep URL in cache — do NOT revoke
-    cursorPos  = -1;
+    cancelCursorTimers();
+    playAudio = null;
+    cursorPos = -1;
     setSndPlaying(false);
     refreshOut();
   };
   audio.onerror = () => {
+    cancelCursorTimers();
     playAudio = null;
     cursorPos = -1;
     setSndPlaying(false);
     refreshOut();
   };
   await audio.play();
-  animateCursor(audio, text);
 }
 
 function playViaSpeechSynthesis(text) {
@@ -705,8 +719,7 @@ function playViaSpeechSynthesis(text) {
   utt.rate   = 0.9;
   utt.onboundary = e => {
     if (e.name === 'word') {
-      readCharIdx = e.charIndex;
-      cursorPos   = snapGrapheme(text, e.charIndex);
+      cursorPos = snapGrapheme(text, e.charIndex);
       refreshOut();
     }
   };
@@ -720,8 +733,7 @@ sndBtn.addEventListener('click', async () => {
   if (sndBtn.classList.contains('playing')) { stopPlayback(); return; }
   if (!st.text.trim()) return;
 
-  readCharIdx = 0;
-  cursorPos   = 0;
+  cursorPos = 0;
   refreshOut();
   setSndPlaying(true);
 
