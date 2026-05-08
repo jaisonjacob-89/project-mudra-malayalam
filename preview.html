@@ -89,11 +89,25 @@
   }
 
   /* Neil: suggestion bar */
-  .sug-bar{
-    display:flex;gap:8px;padding:6px 12px;
-    background:rgba(0,0,0,.18);flex-shrink:0;
-    min-height:38px;align-items:center;overflow-x:auto;
+  .sug-wrap{
+    display:flex;align-items:stretch;
+    background:rgba(0,0,0,.18);flex-shrink:0;min-height:38px;
   }
+  .sug-nav{
+    flex-shrink:0;width:36px;
+    display:flex;align-items:center;justify-content:center;
+    background:transparent;border:none;cursor:pointer;
+    color:rgba(255,255,255,.5);transition:color .15s;
+  }
+  .sug-nav:hover{color:rgba(255,255,255,.9);}
+  .sug-nav svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;}
+  .sug-bar{
+    display:flex;gap:8px;padding:6px 4px;
+    flex:1;min-width:0;
+    align-items:center;overflow-x:auto;
+    scrollbar-width:none;
+  }
+  .sug-bar::-webkit-scrollbar{display:none;}
   .sug-bar:empty::after{
     content:'നിർദ്ദേശങ്ങൾ കാണുന്നതിനായി ടൈപ്പ് ചെയ്തു തുടങ്ങുക..';
     font-size:11px;color:rgba(255,255,255,.25);
@@ -129,7 +143,15 @@
       <svg id="icon-stop" viewBox="0 0 24 24" style="display:none"><path d="M6 6h12v12H6z"/></svg>
     </button>
   </div>
-  <div class="sug-bar" id="sug"></div>
+  <div class="sug-wrap">
+    <button class="sug-nav" id="sug-left" title="Scroll left">
+      <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <div class="sug-bar" id="sug"></div>
+    <button class="sug-nav" id="sug-right" title="Scroll right">
+      <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+  </div>
   <div class="area">
     <canvas id="c"></canvas>
     <div id="kzone">
@@ -468,6 +490,15 @@ const ML_WORDS = ['ഒരു', 'ഞാൻ', 'അത്', 'എനിക്ക്'
 const segmenter = new Intl.Segmenter('ml', { granularity: 'grapheme' });
 const sugEl = document.getElementById('sug');
 
+document.getElementById('sug-left').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  sugEl.scrollBy({ left: -120, behavior: 'smooth' });
+});
+document.getElementById('sug-right').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  sugEl.scrollBy({ left: 120, behavior: 'smooth' });
+});
+
 function currentPrefix(text) {
   if (!text) return '';
   const lastSpace = text.lastIndexOf(' ');
@@ -499,9 +530,9 @@ function renderSuggestions(words) {
 
 function updateSuggestions() {
   const prefix = currentPrefix(st.text);
-  const words  = prefixSearch(prefix);
+  const words  = prefixSearch(prefix, 6);
   renderSuggestions(words);
-  speakAfterCommit(prefix, words);
+  speakAfterCommit(prefix, words.slice(0, 3));
 }
 
 // ═══════════════════════════════════════════════════════════
