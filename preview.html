@@ -303,7 +303,6 @@ let isDown = false;
 
 // Suggestion navigation state
 let pdX = 0, pdY = 0;          // pointerdown canvas position
-let isSwiping = false;          // true while a horizontal swipe is in progress
 let wheelDelayTimer = null;     // 80 ms gate before wheel appears
 let sugSelectedIdx = -1;        // highlighted chip index (-1 = none)
 let currentSuggestions = [];    // live copy of rendered suggestions
@@ -490,11 +489,11 @@ const sugEl = document.getElementById('sug');
 
 document.getElementById('sug-left').addEventListener('pointerdown', e => {
   e.stopPropagation();
-  if (!navigateSuggestion(-1)) sugEl.scrollBy({ left: -120, behavior: 'smooth' });
+  navigateSuggestion(-1);
 });
 document.getElementById('sug-right').addEventListener('pointerdown', e => {
   e.stopPropagation();
-  if (!navigateSuggestion(1)) sugEl.scrollBy({ left: 120, behavior: 'smooth' });
+  navigateSuggestion(1);
 });
 
 function currentPrefix(text) {
@@ -958,7 +957,6 @@ cv.addEventListener('pointerdown', e => {
   primaryPointerId = e.pointerId;
   if (!inTriggerZone(e.offsetX, e.offsetY)) return;
   isDown = true;
-  isSwiping = false;
   pdX = e.offsetX; pdY = e.offsetY;
   beyondDir = 0;
   innerRotSet = false; outerRotSet = false;
@@ -967,7 +965,7 @@ cv.addEventListener('pointerdown', e => {
   clearTimeout(wheelDelayTimer);
   wheelDelayTimer = setTimeout(() => {
     wheelDelayTimer = null;
-    if (isDown && !isSwiping) showWheel(pdX, pdY);
+    if (isDown) showWheel(pdX, pdY);
   }, 80);
 });
 
@@ -995,29 +993,16 @@ cv.addEventListener('pointermove', e => {
 
   if (!isDown) return;
 
-  // ── Pre-wheel swipe detection (while wheel delay is pending) ──────────
+  // ── Accelerate wheel appearance on clear vertical movement ──────────
   if (wheelDelayTimer !== null) {
-    const dx = e.offsetX - pdX, dy = e.offsetY - pdY;
-    const adx = Math.abs(dx), ady = Math.abs(dy);
-    if (adx >= 35 && adx >= ady * 2) {
-      // Horizontal swipe detected — cancel wheel, navigate suggestion
-      if (navigateSuggestion(dx > 0 ? 1 : -1)) {
-        isSwiping = true;
-        clearTimeout(wheelDelayTimer); wheelDelayTimer = null;
-      } else {
-        // No suggestions — show wheel immediately instead
-        clearTimeout(wheelDelayTimer); wheelDelayTimer = null;
-        showWheel(pdX, pdY);
-      }
-    } else if (ady > 20) {
-      // Clearly not a swipe — show wheel now
+    if (Math.abs(e.offsetY - pdY) > 20) {
       clearTimeout(wheelDelayTimer); wheelDelayTimer = null;
       showWheel(pdX, pdY);
     }
     return;
   }
 
-  if (isSwiping || !st.visible) return;
+  if (!st.visible) return;
 
   // Determine which ring the finger is in (by distance only, rotation-independent)
   const dx = e.offsetX - st.cx, dy = e.offsetY - st.cy;
@@ -1090,9 +1075,6 @@ cv.addEventListener('pointerup', e => {
   clearTimeout(wheelDelayTimer); wheelDelayTimer = null;
   cancelLp();
 
-  // Finish horizontal swipe — gesture already handled in pointermove
-  if (isSwiping) { isSwiping = false; return; }
-
   // Double-tap → accept currently highlighted suggestion
   const now = performance.now();
   if (now - lastTapTime < DOUBLE_TAP_MS && sugSelectedIdx >= 0 && currentSuggestions.length) {
@@ -1133,7 +1115,6 @@ cv.addEventListener('pointerleave', e => {
 
   if (isDown) {
     isDown = false;
-    isSwiping = false;
     clearTimeout(wheelDelayTimer); wheelDelayTimer = null;
     cancelLp();
     if (st.visible) hideWheel();
@@ -1148,7 +1129,6 @@ cv.addEventListener('pointercancel', e => {
     primaryPointerId = null;
     if (isDown) {
       isDown = false;
-      isSwiping = false;
       clearTimeout(wheelDelayTimer); wheelDelayTimer = null;
       cancelLp();
       if (st.visible) hideWheel();
