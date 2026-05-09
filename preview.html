@@ -309,6 +309,9 @@ let sugSelectedIdx = -1;        // highlighted chip index (-1 = none)
 let currentSuggestions = [];    // live copy of rendered suggestions
 let lastTapTime = 0;            // timestamp of previous pointerup (double-tap)
 const DOUBLE_TAP_MS = 350;      // max gap between taps to count as double
+const activePointers  = new Map(); // pointerId → {x, y, startX, startY}
+let twoFingerSwiped  = false;      // true once a two-finger swipe fires
+let primaryPointerId = null;       // pointerId of the first finger down
 let lpTimer = null;
 // 0 = inside ring, 1 = beyond right (space), -1 = beyond left (delete)
 let beyondDir = 0;
@@ -941,6 +944,18 @@ window.addEventListener('load', () => setTimeout(playInstructions, 800));
 // ═══════════════════════════════════════════════════════════
 cv.addEventListener('pointerdown', e => {
   e.preventDefault();
+  cv.setPointerCapture(e.pointerId);
+  activePointers.set(e.pointerId, { x: e.offsetX, y: e.offsetY, startX: e.offsetX, startY: e.offsetY });
+
+  if (activePointers.size > 1) {
+    // Second or more finger — cancel pending wheel, prepare for two-finger gesture
+    clearTimeout(wheelDelayTimer); wheelDelayTimer = null;
+    twoFingerSwiped = false;
+    return;
+  }
+
+  // First finger
+  primaryPointerId = e.pointerId;
   if (!inTriggerZone(e.offsetX, e.offsetY)) return;
   isDown = true;
   isSwiping = false;
@@ -957,6 +972,27 @@ cv.addEventListener('pointerdown', e => {
 });
 
 cv.addEventListener('pointermove', e => {
+  // Update tracked position (preserve startX/startY for swipe delta)
+  if (activePointers.has(e.pointerId)) {
+    const p = activePointers.get(e.pointerId);
+    activePointers.set(e.pointerId, { startX: p.startX, startY: p.startY, x: e.offsetX, y: e.offsetY });
+  }
+
+  // Two-finger swipe detection
+  if (activePointers.size >= 2) {
+    if (!twoFingerSwiped) {
+      const pts = [...activePointers.values()];
+      const dxAvg = pts.reduce((s, p) => s + (p.x - p.startX), 0) / pts.length;
+      const dyAvg = pts.reduce((s, p) => s + Math.abs(p.y - p.startY), 0) / pts.length;
+      const adx = Math.abs(dxAvg);
+      if (adx >= 35 && adx >= dyAvg * 2) {
+        twoFingerSwiped = true;
+        navigateSuggestion(dxAvg > 0 ? 1 : -1);
+      }
+    }
+    return;
+  }
+
   if (!isDown) return;
 
   // ── Pre-wheel swipe detection (while wheel delay is pending) ──────────
@@ -1043,6 +1079,12 @@ cv.addEventListener('pointermove', e => {
 });
 
 cv.addEventListener('pointerup', e => {
+  activePointers.delete(e.pointerId);
+  if (activePointers.size < 2) twoFingerSwiped = false;
+
+  if (e.pointerId !== primaryPointerId) return;
+  primaryPointerId = null;
+
   if (!isDown) return;
   isDown = false;
   clearTimeout(wheelDelayTimer); wheelDelayTimer = null;
@@ -1082,13 +1124,35 @@ cv.addEventListener('pointerup', e => {
   hideWheel();
 });
 
-cv.addEventListener('pointerleave', () => {
+cv.addEventListener('pointerleave', e => {
+  activePointers.delete(e.pointerId);
+  if (activePointers.size < 2) twoFingerSwiped = false;
+
+  if (e.pointerId !== primaryPointerId) return;
+  primaryPointerId = null;
+
   if (isDown) {
     isDown = false;
     isSwiping = false;
     clearTimeout(wheelDelayTimer); wheelDelayTimer = null;
     cancelLp();
     if (st.visible) hideWheel();
+  }
+});
+
+cv.addEventListener('pointercancel', e => {
+  activePointers.delete(e.pointerId);
+  if (activePointers.size < 2) twoFingerSwiped = false;
+
+  if (e.pointerId === primaryPointerId) {
+    primaryPointerId = null;
+    if (isDown) {
+      isDown = false;
+      isSwiping = false;
+      clearTimeout(wheelDelayTimer); wheelDelayTimer = null;
+      cancelLp();
+      if (st.visible) hideWheel();
+    }
   }
 });
 
