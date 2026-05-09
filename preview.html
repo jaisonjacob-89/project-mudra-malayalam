@@ -500,9 +500,31 @@ function currentPrefix(text) {
   return lastSpace >= 0 ? text.slice(lastSpace + 1) : text;
 }
 
-function prefixSearch(prefix, n = 3) {
-  if (!prefix) return [];
-  return ML_WORDS.filter(w => w.startsWith(prefix) && w.length > prefix.length).slice(0, n);
+function findSuggestions(fullText, wordPrefix, n) {
+  const results = [];
+  const seen    = new Set();
+
+  function add(w) {
+    if (!seen.has(w)) { seen.add(w); results.push(w); }
+    return results.length >= n;
+  }
+
+  // 1. Full-text phrase match — catches multi-word phrases like "ഞാൻ കൂടെ"
+  const trimmed = fullText ? fullText.trimEnd() : '';
+  if (trimmed) {
+    for (const w of ML_WORDS) {
+      if (w.startsWith(trimmed) && w !== trimmed) { if (add(w)) return results; }
+    }
+  }
+
+  // 2. Current-word prefix match — single-word completions
+  if (wordPrefix) {
+    for (const w of ML_WORDS) {
+      if (w.startsWith(wordPrefix) && w.length > wordPrefix.length) { if (add(w)) return results; }
+    }
+  }
+
+  return results;
 }
 
 function acceptSuggestion(word) {
@@ -558,7 +580,7 @@ async function speakSingleSuggestion(word) {
 
 function updateSuggestions() {
   const prefix = currentPrefix(st.text);
-  const words  = prefixSearch(prefix, 6);
+  const words  = findSuggestions(st.text, prefix, 6);
   currentSuggestions = words;
   sugSelectedIdx = -1;
   updateSugHighlight();
