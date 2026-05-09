@@ -487,11 +487,11 @@ const sugEl = document.getElementById('sug');
 
 document.getElementById('sug-left').addEventListener('pointerdown', e => {
   e.stopPropagation();
-  sugEl.scrollBy({ left: -120, behavior: 'smooth' });
+  if (!navigateSuggestion(-1)) sugEl.scrollBy({ left: -120, behavior: 'smooth' });
 });
 document.getElementById('sug-right').addEventListener('pointerdown', e => {
   e.stopPropagation();
-  sugEl.scrollBy({ left: 120, behavior: 'smooth' });
+  if (!navigateSuggestion(1)) sugEl.scrollBy({ left: 120, behavior: 'smooth' });
 });
 
 function currentPrefix(text) {
