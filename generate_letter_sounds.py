@@ -15,6 +15,7 @@ Outputs 70 MP3 files into the 'Letter sounds/' folder:
 Re-running skips files that already exist — safe to resume after failure.
 """
 
+import base64
 import os
 import sys
 import urllib.request
@@ -47,6 +48,10 @@ CHARS = [
     'ൺ', 'ൻ', 'ർ', 'ൽ', 'ൾ',
     # Geminates (double consonants)
     'ക്ക', 'ച്ച', 'ട്ട', 'ത്ത', 'പ്പ', 'ന്ന', 'ല്ല', 'ള്ള', 'മ്മ',
+    # Numbers root key + digits
+    '123', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
+    # Symbols root key + all sub-menu items
+    '&', '@', '#', '!', '?', '.', ',', '"', "'", '_',
 ]
 
 # ── Instruction sentence (read aloud on app open) ─────────────────────────
@@ -57,11 +62,22 @@ INSTRUCTIONS_TEXT = (
 
 # ── Spoken labels for characters that can't be pronounced in isolation ────
 SPOKEN_OVERRIDE = {
+    # Malayalam special characters
     'ൠ': 'ദീർഘ ഋ',
     'ം': 'അനുസ്വാരം',
     'ഃ': 'വിസർഗം',
     'ഁ': 'ചന്ദ്രബിന്ദു',
     '്': 'ചന്ദ്രക്കല',
+    # Numbers — Malayalam pronunciation
+    '123': 'അക്കങ്ങൾ',
+    '1': 'ഒന്ന്', '2': 'രണ്ട്',  '3': 'മൂന്ന്', '4': 'നാല്',
+    '5': 'അഞ്ച്', '6': 'ആറ്',   '7': 'ഏഴ്',    '8': 'എട്ട്',
+    '9': 'ഒമ്പത്', '0': 'പൂജ്യം',
+    # Symbols — English pronunciation
+    '&': 'symbols',      '@': 'at',          '#': 'hash',
+    '!': 'exclamation',  '?': 'question mark', '.': 'dot',
+    ',': 'comma',        '"': 'quote',        "'": 'apostrophe',
+    '_': 'underscore',
 }
 
 
@@ -90,11 +106,12 @@ def synthesize_via_gargantua(text: str, out_path: str) -> None:
         headers={'Content-Type': 'application/json'},
     )
     with urllib.request.urlopen(req, timeout=15) as resp:
-        audio = resp.read()
-    if not audio:
-        raise RuntimeError('Empty response from Gargantua')
+        data = json.loads(resp.read())
+    audio_b64 = data.get('audio', '')
+    if not audio_b64:
+        raise RuntimeError('Empty audio in Gargantua response')
     with open(out_path, 'wb') as f:
-        f.write(audio)
+        f.write(base64.b64decode(audio_b64))
 
 
 def main():
