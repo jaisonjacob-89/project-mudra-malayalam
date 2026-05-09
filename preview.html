@@ -851,9 +851,42 @@ function isMalayalam(char) {
   return char && [...char].every(c => { const cp = c.codePointAt(0); return cp >= 0x0D00 && cp <= 0x0D7F; });
 }
 
+const LABEL_SPOKEN = {
+  // Numbers — Malayalam pronunciation
+  '123': 'അക്കങ്ങൾ',
+  '1': 'ഒന്ന്', '2': 'രണ്ട്',  '3': 'മൂന്ന്', '4': 'നാല്',
+  '5': 'അഞ്ച്', '6': 'ആറ്',   '7': 'ഏഴ്',    '8': 'എട്ട്',
+  '9': 'ഒമ്പത്', '0': 'പൂജ്യം',
+  // Symbols — English pronunciation
+  '&': 'symbols', '@': 'at',          '#': 'hash',        '!': 'exclamation',
+  '?': 'question mark', '.': 'dot',   ',': 'comma',
+  '"': 'quote',   "'": 'apostrophe',  '_': 'underscore',
+};
+
 function speak(label) {
-  if (!label || label === '–' || !isMalayalam(label)) return;
+  if (!label || label === '–') return;
   clearTimeout(ttsTimer);
+  if (!isMalayalam(label)) {
+    const spoken = LABEL_SPOKEN[label];
+    if (!spoken) return;
+    ttsTimer = setTimeout(async () => {
+      try {
+        const cached = await gargantuaFetch(spoken, hashText('lbl\x00' + spoken));
+        ttsAudio.pause();
+        ttsAudio.src = cached.url;
+        ttsAudio.load();
+        ttsAudio.play().catch(() => {});
+      } catch (_) {
+        if (window.speechSynthesis) {
+          speechSynthesis.cancel();
+          const utt = new SpeechSynthesisUtterance(spoken);
+          utt.lang = 'ml-IN'; utt.rate = 0.9;
+          speechSynthesis.speak(utt);
+        }
+      }
+    }, 80);
+    return;
+  }
   ttsTimer = setTimeout(() => {
     ttsAudio.pause();
     ttsAudio.src = charToFile(label);
