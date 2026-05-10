@@ -156,14 +156,18 @@ fun RadialKeyboardOverlay(
             .fillMaxSize()
             .pointerInput(Unit) {
                 awaitEachGesture {
-                    val down        = awaitFirstDown(requireUnconsumed = false)
-                    val touchOrigin = down.position
+                    val down    = awaitFirstDown(requireUnconsumed = false)
+                    val wheelPx = wheelRadiusDp.toPx()
+                    // Clamp the wheel centre so the full wheel is always on-screen
+                    val raw     = down.position
+                    val touchOrigin = Offset(
+                        raw.x.coerceIn(wheelPx, size.width.toFloat()  - wheelPx),
+                        raw.y.coerceIn(wheelPx, size.height.toFloat() - wheelPx),
+                    )
                     // Reset rotations for this new gesture
                     innerRot = -90f; outerRot = -90f
                     var innerRotSet = false; var outerRotSet = false
                     onShow(touchOrigin)
-
-                    val wheelPx = wheelRadiusDp.toPx()
                     var lastRing: Ring? = null
                     var lastIdx        = -1
 
