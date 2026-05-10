@@ -3,15 +3,22 @@ package com.example.radialkeyboard.ui
 import android.speech.tts.TextToSpeech
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -88,15 +95,27 @@ fun RadialKeyboardScreen() {
             .fillMaxSize()
             .background(ColorBrandTeal),
     ) {
-        TopTextBar(
-            text     = uiState.typedText,
-            onSend   = { viewModel.onEvent(KeyboardEvent.SendPressed) },
+        Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
                 .statusBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
-        )
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            TopTextBar(
+                text   = uiState.typedText,
+                onSend = { viewModel.onEvent(KeyboardEvent.SendPressed) },
+            )
+            if (uiState.suggestions.isNotEmpty()) {
+                SuggestionsBar(
+                    suggestions   = uiState.suggestions,
+                    selectedIdx   = uiState.selectedSuggestionIdx,
+                    onNavigate    = { dir -> viewModel.onEvent(KeyboardEvent.SuggestionNavigated(dir)) },
+                    onAccept      = { word -> viewModel.onEvent(KeyboardEvent.SuggestionAccepted(word)) },
+                )
+            }
+        }
 
         RadialKeyboardOverlay(
             uiState           = uiState,
@@ -130,7 +149,7 @@ fun TopTextBar(
         shape           = RoundedCornerShape(12.dp),
         color           = ColorTextBarBg,
         shadowElevation = 4.dp,
-        modifier        = modifier.heightIn(min = 52.dp),
+        modifier        = modifier.fillMaxWidth().heightIn(min = 52.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -158,6 +177,63 @@ fun TopTextBar(
                     contentDescription = "Send",
                     tint               = Color.White,
                 )
+            }
+        }
+    }
+}
+
+private val ColorChipBg       = Color(0xFF1A3A1A)
+private val ColorChipSelected = Color(0xFFFFD54F)
+private val ColorChipText     = Color.White
+private val ColorChipSelText  = Color(0xFF1A1A1A)
+
+@Composable
+fun SuggestionsBar(
+    suggestions: List<String>,
+    selectedIdx: Int,
+    onNavigate: (Int) -> Unit,
+    onAccept: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val scrollState = rememberScrollState()
+    Surface(
+        shape           = RoundedCornerShape(10.dp),
+        color           = ColorChipBg,
+        shadowElevation = 2.dp,
+        modifier        = modifier.fillMaxWidth().heightIn(min = 44.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            IconButton(onClick = { onNavigate(-1) }) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack,  contentDescription = "Previous", tint = ColorChipText)
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .horizontalScroll(scrollState)
+                    .padding(vertical = 6.dp),
+            ) {
+                suggestions.forEachIndexed { i, word ->
+                    val selected = i == selectedIdx
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (selected) ColorChipSelected else Color.White.copy(alpha = 0.12f),
+                        modifier = Modifier.clickable { onAccept(word) },
+                    ) {
+                        Text(
+                            text     = word,
+                            color    = if (selected) ColorChipSelText else ColorChipText,
+                            style    = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        )
+                    }
+                }
+            }
+            IconButton(onClick = { onNavigate(1) }) {
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Next", tint = ColorChipText)
             }
         }
     }

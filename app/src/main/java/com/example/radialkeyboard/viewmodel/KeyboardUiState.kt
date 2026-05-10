@@ -22,4 +22,8 @@ data class KeyboardUiState(
     // Currently highlighted segment
     val highlightedRing: Ring? = null,
     val highlightedIdx: Int = -1,
+
+    // Word suggestions
+    val suggestions: List<String> = emptyList(),
+    val selectedSuggestionIdx: Int = -1,
 )

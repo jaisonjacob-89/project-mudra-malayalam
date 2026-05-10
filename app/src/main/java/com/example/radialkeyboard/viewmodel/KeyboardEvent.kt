@@ -22,4 +22,8 @@ sealed interface KeyboardEvent {
     // Sub-menu
     data class SubMenuFired(val ring: Ring, val index: Int) : KeyboardEvent
     data object ResetRings : KeyboardEvent
+
+    // Suggestions
+    data class SuggestionNavigated(val dir: Int) : KeyboardEvent   // -1 = prev, +1 = next
+    data class SuggestionAccepted(val word: String) : KeyboardEvent
 }

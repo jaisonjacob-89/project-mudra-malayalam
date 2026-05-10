@@ -3,6 +3,7 @@ package com.example.radialkeyboard.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.radialkeyboard.data.DualRingLayout
+import com.example.radialkeyboard.data.ML_WORDS
 import com.example.radialkeyboard.data.TextRepository
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,17 +33,19 @@ class KeyboardViewModel(
 
     fun onEvent(event: KeyboardEvent) {
         when (event) {
-            is KeyboardEvent.KeyboardShown      -> handleKeyboardShown(event)
-            is KeyboardEvent.KeyboardHidden     -> handleKeyboardHidden()
-            is KeyboardEvent.SegmentHighlighted -> handleSegmentHighlighted(event)
-            is KeyboardEvent.SegmentCleared     -> handleSegmentCleared()
-            is KeyboardEvent.StringCommitted    -> handleStringCommitted(event)
-            is KeyboardEvent.DeleteLast         -> handleDeleteLast()
-            is KeyboardEvent.SpacePressed       -> handleStringCommitted(KeyboardEvent.StringCommitted(" "))
-            is KeyboardEvent.SendPressed        -> handleSendPressed()
-            is KeyboardEvent.TextReplaced       -> handleTextReplaced(event)
-            is KeyboardEvent.SubMenuFired       -> handleSubMenuFired(event)
-            is KeyboardEvent.ResetRings         -> handleResetRings()
+            is KeyboardEvent.KeyboardShown        -> handleKeyboardShown(event)
+            is KeyboardEvent.KeyboardHidden       -> handleKeyboardHidden()
+            is KeyboardEvent.SegmentHighlighted   -> handleSegmentHighlighted(event)
+            is KeyboardEvent.SegmentCleared       -> handleSegmentCleared()
+            is KeyboardEvent.StringCommitted      -> handleStringCommitted(event)
+            is KeyboardEvent.DeleteLast           -> handleDeleteLast()
+            is KeyboardEvent.SpacePressed         -> handleStringCommitted(KeyboardEvent.StringCommitted(" "))
+            is KeyboardEvent.SendPressed          -> handleSendPressed()
+            is KeyboardEvent.TextReplaced         -> handleTextReplaced(event)
+            is KeyboardEvent.SubMenuFired         -> handleSubMenuFired(event)
+            is KeyboardEvent.ResetRings           -> handleResetRings()
+            is KeyboardEvent.SuggestionNavigated  -> handleSuggestionNavigated(event)
+            is KeyboardEvent.SuggestionAccepted   -> handleSuggestionAccepted(event)
         }
     }
 
@@ -80,15 +83,17 @@ class KeyboardViewModel(
     private fun handleStringCommitted(event: KeyboardEvent.StringCommitted) {
         viewModelScope.launch {
             bufferMutex.withLock { textRepository.append(event.chars) }
+            val newText = textRepository.text
             _uiState.update { state ->
                 state.copy(
-                    typedText = textRepository.text,
+                    typedText = newText,
                     innerSegs = DualRingLayout.innerRoot,
                     outerSegs = DualRingLayout.outerRoot,
                     innerSub  = false,
                     outerSub  = false,
                 )
             }
+            recomputeSuggestions(newText)
             emitHaptic(HapticType.CHARACTER_COMMIT)
         }
     }
@@ -96,7 +101,9 @@ class KeyboardViewModel(
     private fun handleDeleteLast() {
         viewModelScope.launch {
             bufferMutex.withLock { textRepository.deleteLastGrapheme() }
-            _uiState.update { it.copy(typedText = textRepository.text) }
+            val newText = textRepository.text
+            _uiState.update { it.copy(typedText = newText) }
+            recomputeSuggestions(newText)
         }
     }
 
@@ -143,6 +150,67 @@ class KeyboardViewModel(
                 outerSub  = false,
             )
         }
+    }
+
+    private fun handleSuggestionNavigated(event: KeyboardEvent.SuggestionNavigated) {
+        val sugs = _uiState.value.suggestions
+        if (sugs.isEmpty()) return
+        val cur  = _uiState.value.selectedSuggestionIdx
+        val next = (cur + event.dir).coerceIn(0, sugs.lastIndex)
+        _uiState.update { it.copy(selectedSuggestionIdx = next) }
+    }
+
+    private fun handleSuggestionAccepted(event: KeyboardEvent.SuggestionAccepted) {
+        viewModelScope.launch {
+            val word    = event.word
+            val current = textRepository.text
+            // Replace the current word prefix with the full suggestion + space
+            val lastSpace = current.lastIndexOf(' ')
+            val newText   = (if (lastSpace >= 0) current.substring(0, lastSpace + 1) else "") + word + " "
+            bufferMutex.withLock { textRepository.setText(newText) }
+            _uiState.update { it.copy(
+                typedText           = newText,
+                suggestions         = emptyList(),
+                selectedSuggestionIdx = -1,
+                innerSegs           = DualRingLayout.innerRoot,
+                outerSegs           = DualRingLayout.outerRoot,
+                innerSub            = false,
+                outerSub            = false,
+            )}
+            emitHaptic(HapticType.CHARACTER_COMMIT)
+        }
+    }
+
+    private fun recomputeSuggestions(text: String) {
+        val trimmed   = text.trimEnd()
+        val lastSpace = trimmed.lastIndexOf(' ')
+        val prefix    = if (lastSpace >= 0) trimmed.substring(lastSpace + 1) else trimmed
+        val sugs      = findSuggestions(trimmed, prefix, 6)
+        _uiState.update { it.copy(suggestions = sugs, selectedSuggestionIdx = -1) }
+    }
+
+    private fun findSuggestions(fullText: String, wordPrefix: String, n: Int): List<String> {
+        val results = mutableListOf<String>()
+        val seen    = mutableSetOf<String>()
+
+        fun add(w: String): Boolean {
+            if (seen.add(w)) results.add(w)
+            return results.size >= n
+        }
+
+        // Pass 1 — full-text phrase continuation
+        if (fullText.isNotEmpty()) {
+            for (w in ML_WORDS) {
+                if (w.startsWith(fullText) && w != fullText) { if (add(w)) return results }
+            }
+        }
+        // Pass 2 — current word prefix
+        if (wordPrefix.isNotEmpty()) {
+            for (w in ML_WORDS) {
+                if (w.startsWith(wordPrefix) && w.length > wordPrefix.length) { if (add(w)) return results }
+            }
+        }
+        return results
     }
 
     private fun emitHaptic(type: HapticType) { _hapticEvents.tryEmit(type) }
