@@ -46,6 +46,7 @@ class KeyboardViewModel(
             is KeyboardEvent.ResetRings           -> handleResetRings()
             is KeyboardEvent.SuggestionNavigated  -> handleSuggestionNavigated(event)
             is KeyboardEvent.SuggestionAccepted   -> handleSuggestionAccepted(event)
+            is KeyboardEvent.BeyondDirChanged     -> _uiState.update { it.copy(beyondDir = event.dir) }
         }
     }
 
@@ -66,7 +67,7 @@ class KeyboardViewModel(
     }
 
     private fun handleKeyboardHidden() {
-        _uiState.update { it.copy(isKeyboardVisible = false, highlightedRing = null, highlightedIdx = -1) }
+        _uiState.update { it.copy(isKeyboardVisible = false, highlightedRing = null, highlightedIdx = -1, beyondDir = 0) }
     }
 
     private fun handleSegmentHighlighted(event: KeyboardEvent.SegmentHighlighted) {
@@ -156,7 +157,7 @@ class KeyboardViewModel(
         val sugs = _uiState.value.suggestions
         if (sugs.isEmpty()) return
         val cur  = _uiState.value.selectedSuggestionIdx
-        val next = (cur + event.dir).coerceIn(0, sugs.lastIndex)
+        val next = ((cur + event.dir) + sugs.size) % sugs.size
         _uiState.update { it.copy(selectedSuggestionIdx = next) }
     }
 

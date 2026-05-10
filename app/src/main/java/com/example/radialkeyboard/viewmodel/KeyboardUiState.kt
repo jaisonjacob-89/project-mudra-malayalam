@@ -26,4 +26,7 @@ data class KeyboardUiState(
     // Word suggestions
     val suggestions: List<String> = emptyList(),
     val selectedSuggestionIdx: Int = -1,
+
+    // Swipe-beyond indicator: -1 = delete (left), 0 = none, 1 = space (right)
+    val beyondDir: Int = 0,
 )

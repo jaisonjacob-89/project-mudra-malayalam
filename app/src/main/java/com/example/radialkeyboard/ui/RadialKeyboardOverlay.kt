@@ -59,9 +59,9 @@ private val C_CENTER       = Color.White
 
 private const val N           = 10
 private const val SWEEP_DEG   = 36f
-private const val F_SPLIT     = 0.50f
+private const val F_SPLIT     = 0.60f
 private const val F_DEAD      = 0.20f
-private const val LP_MS       = 2500L
+private const val LP_MS       = 1500L
 private const val WHEEL_ALPHA = 0.93f
 
 // ─── Composable ──────────────────────────────────────────────────────────────
@@ -79,6 +79,7 @@ fun RadialKeyboardOverlay(
     onShow: (Offset) -> Unit,
     onHide: () -> Unit,
     onHighlight: (Ring?, Int) -> Unit,
+    onBeyondDir: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val scope          = rememberCoroutineScope()
@@ -170,6 +171,7 @@ fun RadialKeyboardOverlay(
                     onShow(touchOrigin)
                     var lastRing: Ring? = null
                     var lastIdx        = -1
+                    var lastBeyond     = 0
 
                     try {
                         var event = awaitPointerEvent()
@@ -195,10 +197,18 @@ fun RadialKeyboardOverlay(
                                 outerRot = rawDeg; outerRotSet = true
                             }
 
+                            // Track beyond-ring direction for visual hint
+                            val newBeyond = if (dist > wheelPx) (if (dx > 0) 1 else -1) else 0
+                            if (newBeyond != lastBeyond) {
+                                lastBeyond = newBeyond
+                                onBeyondDir(newBeyond)
+                                if (newBeyond != 0) { cancelLongPress() }
+                            }
+
                             val (ring, idx) = hitTestDual(touchOrigin, pos, wheelPx, innerRot, outerRot)
 
                             // Cancel and restart LP when moving to a new segment
-                            if (ring != lpRing || idx != lpIdx) {
+                            if (newBeyond == 0 && (ring != lpRing || idx != lpIdx)) {
                                 cancelLongPress()
                                 if (ring != null && idx >= 0) startLongPress(ring, idx)
                             }
@@ -388,6 +398,22 @@ fun RadialKeyboardOverlay(
 
         // ── CENTER CIRCLE ────────────────────────────────────────────────────
         drawCircle(C_CENTER, radius = Rdead, center = center)
+
+        // ── SWIPE-BEYOND HINT (SPC / ⌫) ─────────────────────────────────────
+        if (uiState.beyondDir != 0) {
+            val hintLabel = if (uiState.beyondDir > 0) "SPC" else "⌫"
+            val hintX     = center.x + uiState.beyondDir * R * 1.28f
+            drawIntoCanvas { canvas ->
+                val p = android.graphics.Paint().apply {
+                    color       = android.graphics.Color.argb(200, 255, 255, 255)
+                    textSize    = R * 0.14f
+                    isAntiAlias = true
+                    textAlign   = android.graphics.Paint.Align.CENTER
+                    typeface    = android.graphics.Typeface.DEFAULT_BOLD
+                }
+                canvas.nativeCanvas.drawText(hintLabel, hintX, center.y + p.textSize * 0.35f, p)
+            }
+        }
     }
 }
 

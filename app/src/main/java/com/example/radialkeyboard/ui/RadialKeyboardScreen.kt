@@ -128,6 +128,7 @@ fun RadialKeyboardScreen() {
             onResetRings      = { viewModel.onEvent(KeyboardEvent.ResetRings) },
             onShow            = { offset -> viewModel.onEvent(KeyboardEvent.KeyboardShown(offset)) },
             onHide            = { viewModel.onEvent(KeyboardEvent.KeyboardHidden) },
+            onBeyondDir       = { dir -> viewModel.onEvent(KeyboardEvent.BeyondDirChanged(dir)) },
             onHighlight       = { ring, idx ->
                 if (ring != null && idx >= 0)
                     viewModel.onEvent(KeyboardEvent.SegmentHighlighted(ring, idx))

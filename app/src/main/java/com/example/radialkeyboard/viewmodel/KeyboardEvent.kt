@@ -26,4 +26,7 @@ sealed interface KeyboardEvent {
     // Suggestions
     data class SuggestionNavigated(val dir: Int) : KeyboardEvent   // -1 = prev, +1 = next
     data class SuggestionAccepted(val word: String) : KeyboardEvent
+
+    // Beyond-ring swipe indicator
+    data class BeyondDirChanged(val dir: Int) : KeyboardEvent      // -1 = left, 0 = none, 1 = right
 }
