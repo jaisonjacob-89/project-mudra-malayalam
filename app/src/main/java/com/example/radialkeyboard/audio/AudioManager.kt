@@ -59,6 +59,16 @@ class AudioManager(context: Context) {
         }
     }
 
+    // Play the app-open instruction clip (instructions.mp3).
+    fun playInstructions() {
+        stopCurrent()
+        try {
+            val afd = appContext.assets.openFd("letter_sounds/instructions.mp3")
+            playFd(afd.fileDescriptor, afd.startOffset, afd.length)
+            afd.close()
+        } catch (_: Exception) {}
+    }
+
     // Play the pre-recorded Shobhana clip for a letter/number/symbol label.
     // Stops any currently playing audio first. Falls back silently if no asset exists.
     fun playLetterSound(label: String) {

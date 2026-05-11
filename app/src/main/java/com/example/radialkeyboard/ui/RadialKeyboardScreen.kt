@@ -57,6 +57,12 @@ fun RadialKeyboardScreen() {
     val audio = remember { AudioManager(context) }
     DisposableEffect(audio) { onDispose { audio.shutdown() } }
 
+    // Play instruction clip when screen first loads (800 ms delay matches web version)
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(800)
+        audio.playInstructions()
+    }
+
     // Pre-recorded clip on segment hover — stop any current clip first
     LaunchedEffect(uiState.highlightedRing, uiState.highlightedIdx) {
         val ring  = uiState.highlightedRing ?: run { audio.stop(); return@LaunchedEffect }
@@ -105,7 +111,7 @@ fun RadialKeyboardScreen() {
                     suggestions   = uiState.suggestions,
                     selectedIdx   = uiState.selectedSuggestionIdx,
                     onNavigate    = { dir -> viewModel.onEvent(KeyboardEvent.SuggestionNavigated(dir)) },
-                    onAccept      = { word -> viewModel.onEvent(KeyboardEvent.SuggestionAccepted(word)) },
+                    onAccept      = { word -> audio.stop(); viewModel.onEvent(KeyboardEvent.SuggestionAccepted(word)) },
                 )
             }
         }
@@ -119,7 +125,7 @@ fun RadialKeyboardScreen() {
             onSpace           = { viewModel.onEvent(KeyboardEvent.SpacePressed) },
             onSubMenuFired    = { ring, idx -> viewModel.onEvent(KeyboardEvent.SubMenuFired(ring, idx)) },
             onResetRings      = { viewModel.onEvent(KeyboardEvent.ResetRings) },
-            onShow            = { offset -> viewModel.onEvent(KeyboardEvent.KeyboardShown(offset)) },
+            onShow            = { offset -> audio.stop(); viewModel.onEvent(KeyboardEvent.KeyboardShown(offset)) },
             onHide            = { viewModel.onEvent(KeyboardEvent.KeyboardHidden) },
             onBeyondDir       = { dir -> viewModel.onEvent(KeyboardEvent.BeyondDirChanged(dir)) },
             onHighlight       = { ring, idx ->
