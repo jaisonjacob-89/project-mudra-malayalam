@@ -1,6 +1,6 @@
 package com.example.radialkeyboard.ui
 
-import android.speech.tts.TextToSpeech
+import com.example.radialkeyboard.audio.AudioManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -29,7 +29,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,7 +41,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.radialkeyboard.viewmodel.KeyboardEvent
 import com.example.radialkeyboard.viewmodel.KeyboardViewModel
 import com.example.radialkeyboard.viewmodel.Ring
-import java.util.Locale
 
 private val ColorBrandTeal   = Color(0xFF1B5E20)
 private val ColorSendButton  = Color(0xFF2E7D32)
@@ -55,31 +53,25 @@ fun RadialKeyboardScreen() {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    // ── Text-to-Speech setup ─────────────────────────────────────────────────
-    val ttsReady = remember { mutableStateOf(false) }
-    val tts = remember {
-        TextToSpeech(context) { status ->
-            ttsReady.value = status == TextToSpeech.SUCCESS
-        }
-    }
-    LaunchedEffect(ttsReady.value) {
-        if (ttsReady.value) {
-            tts.language = Locale("ml", "IN")
-            tts.setSpeechRate(1.1f)
-        }
-    }
-    DisposableEffect(Unit) {
-        onDispose { tts.shutdown() }
+    // ── Audio setup ──────────────────────────────────────────────────────────
+    val audio = remember { AudioManager(context) }
+    DisposableEffect(Unit) { onDispose { audio.shutdown() } }
+
+    // Pre-recorded clip on segment hover
+    LaunchedEffect(uiState.highlightedRing, uiState.highlightedIdx) {
+        val ring  = uiState.highlightedRing ?: return@LaunchedEffect
+        val idx   = uiState.highlightedIdx.takeIf { it >= 0 } ?: return@LaunchedEffect
+        val segs  = if (ring == Ring.INNER) uiState.innerSegs else uiState.outerSegs
+        val label = segs.getOrNull(idx)?.label?.takeIf { it.isNotBlank() && it != "–" } ?: return@LaunchedEffect
+        audio.playLetterSound(label)
     }
 
-    // Speak the label whenever the highlighted segment changes
-    LaunchedEffect(uiState.highlightedRing, uiState.highlightedIdx) {
-        if (!ttsReady.value) return@LaunchedEffect
-        val ring = uiState.highlightedRing ?: return@LaunchedEffect
-        val idx  = uiState.highlightedIdx.takeIf { it >= 0 } ?: return@LaunchedEffect
-        val segs = if (ring == Ring.INNER) uiState.innerSegs else uiState.outerSegs
-        val label = segs.getOrNull(idx)?.label?.takeIf { it.isNotBlank() && it != "–" } ?: return@LaunchedEffect
-        tts.speak(label, TextToSpeech.QUEUE_FLUSH, null, null)
+    // Speak selected suggestion via cached TTS
+    LaunchedEffect(uiState.selectedSuggestionIdx) {
+        val idx = uiState.selectedSuggestionIdx
+        if (idx >= 0 && idx < uiState.suggestions.size) {
+            audio.speakText(uiState.suggestions[idx])
+        }
     }
 
     LaunchedEffect(viewModel) {
