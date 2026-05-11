@@ -1,6 +1,5 @@
 package com.example.radialkeyboard.ui
 
-import com.example.radialkeyboard.audio.AudioManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -19,7 +18,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -29,23 +29,30 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.radialkeyboard.audio.AudioManager
 import com.example.radialkeyboard.viewmodel.KeyboardEvent
 import com.example.radialkeyboard.viewmodel.KeyboardViewModel
 import com.example.radialkeyboard.viewmodel.Ring
 
-private val ColorBrandTeal   = Color(0xFF1B5E20)
-private val ColorSendButton  = Color(0xFF2E7D32)
-private val ColorTextBarBg   = Color.White
-private val ColorTextContent = Color(0xFF1A1A1A)
+private val ColorBrandTeal    = Color(0xFF1B5E20)
+private val ColorPlayButton   = Color(0xFF2E7D32)
+private val ColorStopButton   = Color(0xFFB71C1C)
+private val ColorTextBarBg    = Color.White
+private val ColorTextContent  = Color(0xFF1A1A1A)
 
 @Composable
 fun RadialKeyboardScreen() {
@@ -53,17 +60,30 @@ fun RadialKeyboardScreen() {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    // ── Audio setup ──────────────────────────────────────────────────────────
+    // ── Audio ────────────────────────────────────────────────────────────────
     val audio = remember { AudioManager(context) }
     DisposableEffect(audio) { onDispose { audio.shutdown() } }
 
-    // Play instruction clip when screen first loads (800 ms delay matches web version)
+    // Stop audio when app goes to background
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle, audio) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) audio.stop()
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+
+    // Track whether composed text is being read aloud
+    var isReading by remember { mutableStateOf(false) }
+
+    // Instructions on first load (800 ms delay matches web version)
     LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(800)
         audio.playInstructions()
     }
 
-    // Pre-recorded clip on segment hover — stop any current clip first
+    // Letter sound on segment hover
     LaunchedEffect(uiState.highlightedRing, uiState.highlightedIdx) {
         val ring  = uiState.highlightedRing ?: run { audio.stop(); return@LaunchedEffect }
         val idx   = uiState.highlightedIdx.takeIf { it >= 0 } ?: run { audio.stop(); return@LaunchedEffect }
@@ -72,7 +92,7 @@ fun RadialKeyboardScreen() {
         audio.playLetterSound(label)
     }
 
-    // Speak selected suggestion via cached TTS
+    // Suggestion readout on navigation
     LaunchedEffect(uiState.selectedSuggestionIdx) {
         val idx         = uiState.selectedSuggestionIdx
         val suggestions = uiState.suggestions
@@ -103,15 +123,29 @@ fun RadialKeyboardScreen() {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             TopTextBar(
-                text   = uiState.typedText,
-                onSend = { viewModel.onEvent(KeyboardEvent.SendPressed) },
+                text      = uiState.typedText,
+                isReading = isReading,
+                onPlayStop = {
+                    if (isReading) {
+                        audio.stop()
+                        isReading = false
+                    } else if (uiState.typedText.isNotBlank()) {
+                        audio.stop()
+                        isReading = true
+                        audio.speakText(uiState.typedText) { isReading = false }
+                    }
+                },
             )
             if (uiState.suggestions.isNotEmpty()) {
                 SuggestionsBar(
-                    suggestions   = uiState.suggestions,
-                    selectedIdx   = uiState.selectedSuggestionIdx,
-                    onNavigate    = { dir -> viewModel.onEvent(KeyboardEvent.SuggestionNavigated(dir)) },
-                    onAccept      = { word -> audio.stop(); viewModel.onEvent(KeyboardEvent.SuggestionAccepted(word)) },
+                    suggestions = uiState.suggestions,
+                    selectedIdx = uiState.selectedSuggestionIdx,
+                    onNavigate  = { dir -> viewModel.onEvent(KeyboardEvent.SuggestionNavigated(dir)) },
+                    onAccept    = { word ->
+                        audio.stop()
+                        isReading = false
+                        viewModel.onEvent(KeyboardEvent.SuggestionAccepted(word))
+                    },
                 )
             }
         }
@@ -120,12 +154,21 @@ fun RadialKeyboardScreen() {
             uiState           = uiState,
             hapticEvents      = viewModel.hapticEvents,
             wheelRadiusDp     = 160.dp,
-            onStringCommitted = { chars -> viewModel.onEvent(KeyboardEvent.StringCommitted(chars)) },
-            onDelete          = { viewModel.onEvent(KeyboardEvent.DeleteLast) },
-            onSpace           = { viewModel.onEvent(KeyboardEvent.SpacePressed) },
-            onSubMenuFired    = { ring, idx -> viewModel.onEvent(KeyboardEvent.SubMenuFired(ring, idx)) },
+            onStringCommitted = { chars ->
+                audio.stop(); isReading = false
+                viewModel.onEvent(KeyboardEvent.StringCommitted(chars))
+            },
+            onDelete          = { audio.stop(); isReading = false; viewModel.onEvent(KeyboardEvent.DeleteLast) },
+            onSpace           = { audio.stop(); isReading = false; viewModel.onEvent(KeyboardEvent.SpacePressed) },
+            onSubMenuFired    = { ring, idx ->
+                audio.stop()
+                viewModel.onEvent(KeyboardEvent.SubMenuFired(ring, idx))
+            },
             onResetRings      = { viewModel.onEvent(KeyboardEvent.ResetRings) },
-            onShow            = { offset -> audio.stop(); viewModel.onEvent(KeyboardEvent.KeyboardShown(offset)) },
+            onShow            = { offset ->
+                audio.stop(); isReading = false
+                viewModel.onEvent(KeyboardEvent.KeyboardShown(offset))
+            },
             onHide            = { viewModel.onEvent(KeyboardEvent.KeyboardHidden) },
             onBeyondDir       = { dir -> viewModel.onEvent(KeyboardEvent.BeyondDirChanged(dir)) },
             onHighlight       = { ring, idx ->
@@ -142,7 +185,8 @@ fun RadialKeyboardScreen() {
 @Composable
 fun TopTextBar(
     text: String,
-    onSend: () -> Unit,
+    isReading: Boolean,
+    onPlayStop: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -167,14 +211,17 @@ fun TopTextBar(
                 modifier = Modifier.weight(1f),
             )
             IconButton(
-                onClick  = onSend,
+                onClick  = onPlayStop,
                 modifier = Modifier
                     .padding(start = 4.dp)
-                    .background(color = ColorSendButton, shape = RoundedCornerShape(8.dp)),
+                    .background(
+                        color = if (isReading) ColorStopButton else ColorPlayButton,
+                        shape = RoundedCornerShape(8.dp),
+                    ),
             ) {
                 Icon(
-                    imageVector        = Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Send",
+                    imageVector        = if (isReading) Icons.Filled.Stop else Icons.Filled.PlayArrow,
+                    contentDescription = if (isReading) "Stop" else "Play",
                     tint               = Color.White,
                 )
             }

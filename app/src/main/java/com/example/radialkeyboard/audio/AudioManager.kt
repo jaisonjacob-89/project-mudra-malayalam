@@ -31,6 +31,9 @@ class AudioManager(context: Context) {
         }
     }
 
+    // Completion callbacks registered per utterance key
+    private val completionCallbacks = mutableMapOf<String, () -> Unit>()
+
     // Single persistent listener — set once after TTS init, never replaced.
     private val utteranceListener = object : UtteranceProgressListener() {
         override fun onStart(id: String?) {}
@@ -42,9 +45,13 @@ class AudioManager(context: Context) {
                     cache[key] = file
                     playFile(file)
                 }
+                completionCallbacks.remove(key)?.invoke()
             }
         }
-        override fun onError(id: String?) {}
+        override fun onError(id: String?) {
+            val key = id ?: return
+            mainHandler.post { completionCallbacks.remove(key)?.invoke() }
+        }
     }
 
     init {
@@ -82,25 +89,32 @@ class AudioManager(context: Context) {
     }
 
     // Speak arbitrary text using the TTS cache.
-    // Cache hit → plays instantly. Cache miss → synthesises to file, caches, then plays.
-    fun speakText(text: String) {
-        if (text.isBlank()) return
+    // Always stops current audio first so rapid calls never overlap.
+    // onDone fires on the main thread when playback finishes (or on error).
+    fun speakText(text: String, onDone: () -> Unit = {}) {
+        if (text.isBlank()) { onDone(); return }
+        stopCurrent()
+
         val key = text.hashCode().toString()
 
-        // Cache hit — play immediately on main thread
-        cache[key]?.takeIf { it.exists() }?.let { playFile(it); return }
+        // Cache hit — play immediately; onDone fires on MediaPlayer completion
+        cache[key]?.takeIf { it.exists() }?.let { playFile(it, onDone); return }
 
-        if (!ttsReady) return
+        if (!ttsReady) { onDone(); return }
+        completionCallbacks[key] = onDone
         val outFile = File(cacheDir, "$key.wav")
-        // utteranceListener handles playback once synthesis is done
         tts?.synthesizeToFile(text, null, outFile, key)
     }
 
-    fun stop() = stopCurrent()
+    fun stop() {
+        completionCallbacks.clear()
+        stopCurrent()
+    }
 
     fun shutdown() {
         isShuttingDown = true
         ttsReady = false
+        completionCallbacks.clear()
         stopCurrent()
         try { tts?.shutdown() } catch (_: Exception) {}
         tts = null
@@ -108,17 +122,17 @@ class AudioManager(context: Context) {
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
-    private fun playFile(file: File) {
-        if (!file.exists()) return
+    private fun playFile(file: File, onDone: () -> Unit = {}) {
+        if (!file.exists()) { onDone(); return }
         try {
             val mp = MediaPlayer()
             mp.setDataSource(file.absolutePath)
             mp.prepare()
-            mp.setOnCompletionListener { it.release() }
+            mp.setOnCompletionListener { it.release(); mainHandler.post(onDone) }
             stopCurrent()
             player = mp
             mp.start()
-        } catch (_: Exception) {}
+        } catch (_: Exception) { onDone() }
     }
 
     private fun playFd(fd: java.io.FileDescriptor, start: Long, length: Long) {
