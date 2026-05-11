@@ -55,12 +55,12 @@ fun RadialKeyboardScreen() {
 
     // ── Audio setup ──────────────────────────────────────────────────────────
     val audio = remember { AudioManager(context) }
-    DisposableEffect(Unit) { onDispose { audio.shutdown() } }
+    DisposableEffect(audio) { onDispose { audio.shutdown() } }
 
-    // Pre-recorded clip on segment hover
+    // Pre-recorded clip on segment hover — stop any current clip first
     LaunchedEffect(uiState.highlightedRing, uiState.highlightedIdx) {
-        val ring  = uiState.highlightedRing ?: return@LaunchedEffect
-        val idx   = uiState.highlightedIdx.takeIf { it >= 0 } ?: return@LaunchedEffect
+        val ring  = uiState.highlightedRing ?: run { audio.stop(); return@LaunchedEffect }
+        val idx   = uiState.highlightedIdx.takeIf { it >= 0 } ?: run { audio.stop(); return@LaunchedEffect }
         val segs  = if (ring == Ring.INNER) uiState.innerSegs else uiState.outerSegs
         val label = segs.getOrNull(idx)?.label?.takeIf { it.isNotBlank() && it != "–" } ?: return@LaunchedEffect
         audio.playLetterSound(label)
@@ -68,9 +68,10 @@ fun RadialKeyboardScreen() {
 
     // Speak selected suggestion via cached TTS
     LaunchedEffect(uiState.selectedSuggestionIdx) {
-        val idx = uiState.selectedSuggestionIdx
-        if (idx >= 0 && idx < uiState.suggestions.size) {
-            audio.speakText(uiState.suggestions[idx])
+        val idx         = uiState.selectedSuggestionIdx
+        val suggestions = uiState.suggestions
+        if (idx >= 0 && idx < suggestions.size) {
+            audio.speakText(suggestions[idx])
         }
     }
 
