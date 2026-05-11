@@ -19,8 +19,7 @@ data class RingKey(
 
 object DualRingLayout {
 
-    const val N      = 10
-    const val SWEEP  = 36f   // 360 / N
+    const val N = 10
 
     /** Inner ring — clockwise from top (index 0 = top = -90°). */
     val innerRoot: List<RingKey?> = listOf(

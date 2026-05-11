@@ -26,9 +26,6 @@ class KeyboardViewModel(
     private val _hapticEvents = MutableSharedFlow<HapticType>(replay = 0, extraBufferCapacity = 8)
     val hapticEvents: SharedFlow<HapticType> = _hapticEvents.asSharedFlow()
 
-    private val _sentMessages = MutableSharedFlow<String>(replay = 0, extraBufferCapacity = 16)
-    val sentMessages: SharedFlow<String> = _sentMessages.asSharedFlow()
-
     private val bufferMutex = Mutex()
 
     fun onEvent(event: KeyboardEvent) {
@@ -40,8 +37,6 @@ class KeyboardViewModel(
             is KeyboardEvent.StringCommitted      -> handleStringCommitted(event)
             is KeyboardEvent.DeleteLast           -> handleDeleteLast()
             is KeyboardEvent.SpacePressed         -> handleStringCommitted(KeyboardEvent.StringCommitted(" "))
-            is KeyboardEvent.SendPressed          -> handleSendPressed()
-            is KeyboardEvent.TextReplaced         -> handleTextReplaced(event)
             is KeyboardEvent.SubMenuFired         -> handleSubMenuFired(event)
             is KeyboardEvent.ResetRings           -> handleResetRings()
             is KeyboardEvent.SuggestionNavigated  -> handleSuggestionNavigated(event)
@@ -105,24 +100,6 @@ class KeyboardViewModel(
             val newText = textRepository.text
             _uiState.update { it.copy(typedText = newText) }
             recomputeSuggestions(newText)
-        }
-    }
-
-    private fun handleSendPressed() {
-        viewModelScope.launch {
-            val text = _uiState.value.typedText
-            if (text.isNotBlank()) {
-                _sentMessages.emit(text)
-                bufferMutex.withLock { textRepository.clear() }
-                _uiState.update { it.copy(typedText = "") }
-            }
-        }
-    }
-
-    private fun handleTextReplaced(event: KeyboardEvent.TextReplaced) {
-        viewModelScope.launch {
-            bufferMutex.withLock { textRepository.setText(event.text) }
-            _uiState.update { it.copy(typedText = textRepository.text) }
         }
     }
 

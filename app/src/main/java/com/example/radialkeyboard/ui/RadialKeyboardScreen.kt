@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Icon
@@ -35,8 +36,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -59,6 +62,7 @@ fun RadialKeyboardScreen() {
     val viewModel: KeyboardViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
 
     // ── Audio ────────────────────────────────────────────────────────────────
     val audio = remember { AudioManager(context) }
@@ -101,10 +105,6 @@ fun RadialKeyboardScreen() {
         }
     }
 
-    LaunchedEffect(viewModel) {
-        viewModel.sentMessages.collect { /* delivered to chat */ }
-    }
-
     BackHandler(enabled = uiState.innerSub || uiState.outerSub) {
         viewModel.onEvent(KeyboardEvent.ResetRings)
     }
@@ -133,6 +133,11 @@ fun RadialKeyboardScreen() {
                         audio.stop()
                         isReading = true
                         audio.speakText(uiState.typedText) { isReading = false }
+                    }
+                },
+                onCopy = {
+                    if (uiState.typedText.isNotBlank()) {
+                        clipboardManager.setText(AnnotatedString(uiState.typedText))
                     }
                 },
             )
@@ -171,6 +176,7 @@ fun RadialKeyboardScreen() {
             },
             onHide            = { viewModel.onEvent(KeyboardEvent.KeyboardHidden) },
             onBeyondDir       = { dir -> viewModel.onEvent(KeyboardEvent.BeyondDirChanged(dir)) },
+            onNavigateSuggestion = { dir -> viewModel.onEvent(KeyboardEvent.SuggestionNavigated(dir)) },
             onHighlight       = { ring, idx ->
                 if (ring != null && idx >= 0)
                     viewModel.onEvent(KeyboardEvent.SegmentHighlighted(ring, idx))
@@ -187,6 +193,7 @@ fun TopTextBar(
     text: String,
     isReading: Boolean,
     onPlayStop: () -> Unit,
+    onCopy: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -199,21 +206,11 @@ fun TopTextBar(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 4.dp),
+                .padding(horizontal = 4.dp),
         ) {
-            Text(
-                text     = text.ifEmpty { "Start typing…" },
-                style    = MaterialTheme.typography.bodyLarge,
-                color    = if (text.isEmpty()) ColorTextContent.copy(alpha = 0.4f)
-                           else ColorTextContent,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
             IconButton(
                 onClick  = onPlayStop,
                 modifier = Modifier
-                    .padding(start = 4.dp)
                     .background(
                         color = if (isReading) ColorStopButton else ColorPlayButton,
                         shape = RoundedCornerShape(8.dp),
@@ -223,6 +220,24 @@ fun TopTextBar(
                     imageVector        = if (isReading) Icons.Filled.Stop else Icons.Filled.PlayArrow,
                     contentDescription = if (isReading) "Stop" else "Play",
                     tint               = Color.White,
+                )
+            }
+            Text(
+                text     = text.ifEmpty { "Start typing…" },
+                style    = MaterialTheme.typography.bodyLarge,
+                color    = if (text.isEmpty()) ColorTextContent.copy(alpha = 0.4f)
+                           else ColorTextContent,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 8.dp),
+            )
+            IconButton(onClick = onCopy) {
+                Icon(
+                    imageVector        = Icons.Filled.ContentCopy,
+                    contentDescription = "Copy text",
+                    tint               = ColorTextContent.copy(alpha = 0.6f),
                 )
             }
         }

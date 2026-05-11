@@ -16,8 +16,6 @@ sealed interface KeyboardEvent {
     data class StringCommitted(val chars: String) : KeyboardEvent
     data object DeleteLast : KeyboardEvent
     data object SpacePressed : KeyboardEvent
-    data object SendPressed : KeyboardEvent
-    data class TextReplaced(val text: String) : KeyboardEvent
 
     // Sub-menu
     data class SubMenuFired(val ring: Ring, val index: Int) : KeyboardEvent

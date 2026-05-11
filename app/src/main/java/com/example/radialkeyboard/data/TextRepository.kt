@@ -6,10 +6,6 @@ class TextRepository {
 
     val text: String get() = _buffer.toString()
 
-    fun append(char: Char) {
-        if (char == '\b') deleteLastGrapheme() else _buffer.append(char)
-    }
-
     fun append(text: String) {
         val composed = SyllableComposer.compose(_buffer.toString(), text)
         _buffer.clear()

@@ -40,6 +40,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.ceil
 import kotlin.math.cos
@@ -80,6 +81,7 @@ fun RadialKeyboardOverlay(
     onHide: () -> Unit,
     onHighlight: (Ring?, Int) -> Unit,
     onBeyondDir: (Int) -> Unit = {},
+    onNavigateSuggestion: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val scope          = rememberCoroutineScope()
@@ -173,50 +175,77 @@ fun RadialKeyboardOverlay(
                     var lastIdx        = -1
                     var lastBeyond     = 0
 
+                    var twoFingerMode    = false
+                    var twoFingerStartX  = 0f
+                    var twoFingerStartY  = 0f
+                    var twoFingerSwiped  = false
+                    val swipeThreshPx    = 35.dp.toPx()
+
                     try {
                         var event = awaitPointerEvent()
-                        while (event.type != PointerEventType.Release &&
-                               event.type != PointerEventType.Exit)
-                        {
-                            val pos  = event.changes.firstOrNull()?.position ?: break
-                            val dx   = pos.x - touchOrigin.x
-                            val dy   = pos.y - touchOrigin.y
-                            val dist = sqrt(dx * dx + dy * dy)
-                            val dead = wheelPx * F_DEAD
-                            val split = wheelPx * F_SPLIT
+                        while (true) {
+                            val pressed = event.changes.filter { it.pressed }
+                            if (pressed.isEmpty() || event.type == PointerEventType.Exit) break
 
-                            // Compute raw angle for snapping
-                            var rawDeg = (atan2(dy, dx) * (180.0 / PI)).toFloat()
-                            if (rawDeg < 0) rawDeg += 360f
-
-                            // Snap ring rotation once on first entry so segment 0 is under finger
-                            if (dist >= dead && dist < split && !innerRotSet) {
-                                innerRot = rawDeg; innerRotSet = true
-                            }
-                            if (dist >= split && dist <= wheelPx && !outerRotSet) {
-                                outerRot = rawDeg; outerRotSet = true
-                            }
-
-                            // Track beyond-ring direction for visual hint
-                            val newBeyond = if (dist > wheelPx) (if (dx > 0) 1 else -1) else 0
-                            if (newBeyond != lastBeyond) {
-                                lastBeyond = newBeyond
-                                onBeyondDir(newBeyond)
-                                if (newBeyond != 0) { cancelLongPress() }
-                            }
-
-                            val (ring, idx) = hitTestDual(touchOrigin, pos, wheelPx, innerRot, outerRot)
-
-                            // Cancel and restart LP when moving to a new segment
-                            if (newBeyond == 0 && (ring != lpRing || idx != lpIdx)) {
+                            // ── Second finger detected → enter two-finger mode ────
+                            if (pressed.size >= 2 && !twoFingerMode) {
+                                twoFingerMode = true
                                 cancelLongPress()
-                                if (ring != null && idx >= 0) startLongPress(ring, idx)
+                                onHighlight(null, -1)
+                                lastRing = null; lastIdx = -1
+                                twoFingerStartX = pressed.map { it.position.x }.average().toFloat()
+                                twoFingerStartY = pressed.map { it.position.y }.average().toFloat()
                             }
 
-                            // Emit highlight only on change
-                            if (ring != lastRing || idx != lastIdx) {
-                                lastRing = ring; lastIdx = idx
-                                onHighlight(ring, idx)
+                            if (twoFingerMode) {
+                                // Swipe detection on both fingers together
+                                if (!twoFingerSwiped && pressed.size >= 2) {
+                                    val avgX = pressed.map { it.position.x }.average().toFloat()
+                                    val avgY = pressed.map { it.position.y }.average().toFloat()
+                                    val dx   = avgX - twoFingerStartX
+                                    val dy   = avgY - twoFingerStartY
+                                    if (abs(dx) >= swipeThreshPx && abs(dx) >= 2f * abs(dy)) {
+                                        twoFingerSwiped = true
+                                        onNavigateSuggestion(if (dx > 0) 1 else -1)
+                                    }
+                                }
+                            } else {
+                                // ── Single-finger wheel interaction ───────────────
+                                val pos  = pressed.firstOrNull()?.position ?: break
+                                val dx   = pos.x - touchOrigin.x
+                                val dy   = pos.y - touchOrigin.y
+                                val dist = sqrt(dx * dx + dy * dy)
+                                val dead  = wheelPx * F_DEAD
+                                val split = wheelPx * F_SPLIT
+
+                                var rawDeg = (atan2(dy, dx) * (180.0 / PI)).toFloat()
+                                if (rawDeg < 0) rawDeg += 360f
+
+                                if (dist >= dead && dist < split && !innerRotSet) {
+                                    innerRot = rawDeg; innerRotSet = true
+                                }
+                                if (dist >= split && dist <= wheelPx && !outerRotSet) {
+                                    outerRot = rawDeg; outerRotSet = true
+                                }
+
+                                val newBeyond = if (dist > wheelPx) (if (dx > 0) 1 else -1) else 0
+                                if (newBeyond != lastBeyond) {
+                                    lastBeyond = newBeyond
+                                    onBeyondDir(newBeyond)
+                                    if (newBeyond != 0) { cancelLongPress() }
+                                }
+
+                                val (ring, idx) = hitTestDual(touchOrigin, pos, wheelPx, innerRot, outerRot)
+
+                                if (newBeyond == 0 && (ring != lpRing || idx != lpIdx)) {
+                                    cancelLongPress()
+                                    if (ring != null && idx >= 0) startLongPress(ring, idx)
+                                }
+
+                                if (ring != lastRing || idx != lastIdx) {
+                                    lastRing = ring; lastIdx = idx
+                                    onHighlight(ring, idx)
+                                }
                             }
 
                             event.changes.forEach { it.consume() }
@@ -225,31 +254,30 @@ fun RadialKeyboardOverlay(
 
                         // ── LIFT ─────────────────────────────────────────────
                         cancelLongPress()
-                        val finalPos  = event.changes.firstOrNull()?.position ?: touchOrigin
-                        val dxC       = finalPos.x - touchOrigin.x
-                        val dyC       = finalPos.y - touchOrigin.y
-                        val distFinal = sqrt(dxC * dxC + dyC * dyC)
-                        val deadZone  = wheelPx * F_DEAD
+                        if (!twoFingerMode) {
+                            val finalPos  = event.changes.firstOrNull()?.position ?: touchOrigin
+                            val dxC       = finalPos.x - touchOrigin.x
+                            val dyC       = finalPos.y - touchOrigin.y
+                            val distFinal = sqrt(dxC * dxC + dyC * dyC)
+                            val deadZone  = wheelPx * F_DEAD
 
-                        when {
-                            // Beyond outer ring → space (right) or backspace (left)
-                            distFinal > wheelPx -> {
-                                if (dxC > 0) onSpace() else onDelete()
-                            }
-                            // Center tap → reset sub-menus
-                            distFinal < deadZone -> {
-                                if (currentUiState.innerSub || currentUiState.outerSub) {
-                                    innerRot = -90f; outerRot = -90f
-                                    onResetRings()
+                            when {
+                                distFinal > wheelPx -> {
+                                    if (dxC > 0) onSpace() else onDelete()
                                 }
-                            }
-                            // Inside rings → commit highlighted character
-                            lastRing != null && lastIdx >= 0 -> {
-                                val segs = if (lastRing == Ring.INNER)
-                                    currentUiState.innerSegs
-                                else
-                                    currentUiState.outerSegs
-                                segs.getOrNull(lastIdx)?.chars?.let { onStringCommitted(it) }
+                                distFinal < deadZone -> {
+                                    if (currentUiState.innerSub || currentUiState.outerSub) {
+                                        innerRot = -90f; outerRot = -90f
+                                        onResetRings()
+                                    }
+                                }
+                                lastRing != null && lastIdx >= 0 -> {
+                                    val segs = if (lastRing == Ring.INNER)
+                                        currentUiState.innerSegs
+                                    else
+                                        currentUiState.outerSegs
+                                    segs.getOrNull(lastIdx)?.chars?.let { onStringCommitted(it) }
+                                }
                             }
                         }
                     } finally {
