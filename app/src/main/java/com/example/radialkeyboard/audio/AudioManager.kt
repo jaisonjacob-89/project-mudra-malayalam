@@ -14,15 +14,20 @@ class AudioManager(context: Context) {
     private val appContext  = context.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    // Primary player — letter sounds, TTS cache playback
     private var player: MediaPlayer? = null
+
+    // Separate player for short UI click sounds — never stops letter sounds
+    private var clickPlayer: MediaPlayer? = null
 
     private var tts: TextToSpeech? = null
     private var ttsReady      = false
     private var isShuttingDown = false
 
+    // True while a direct tts.speak() call is active (Play button readback)
+    private var isDirectSpeaking = false
+
     // LRU cache: text-hash key → synthesised WAV file.
-    // All reads/writes happen on the main thread (via mainHandler.post), so no
-    // external synchronisation is needed.
     private val cacheDir = File(appContext.cacheDir, "tts_cache").also { it.mkdirs() }
     private val cache = object : LinkedHashMap<String, File>(64, 0.75f, true) {
         override fun removeEldestEntry(eldest: Map.Entry<String, File>): Boolean {
@@ -31,26 +36,42 @@ class AudioManager(context: Context) {
         }
     }
 
-    // Completion callbacks registered per utterance key
+    // Per-utterance completion callbacks
     private val completionCallbacks = mutableMapOf<String, () -> Unit>()
 
-    // Single persistent listener — set once after TTS init, never replaced.
+    // Per-utterance word-cursor callbacks (only populated by speakForPlayback)
+    private val cursorCallbacks = mutableMapOf<String, (Int) -> Unit>()
+
     private val utteranceListener = object : UtteranceProgressListener() {
         override fun onStart(id: String?) {}
+
+        // Word boundary — fires during tts.speak() utterances (not synthesizeToFile)
+        override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
+            val key = utteranceId ?: return
+            mainHandler.post { cursorCallbacks[key]?.invoke(start) }
+        }
+
         override fun onDone(id: String?) {
             val key = id ?: return
             mainHandler.post {
-                val file = File(cacheDir, "$key.wav")
-                if (file.exists()) {
-                    cache[key] = file
-                    playFile(file)
+                if (key.startsWith("pb_")) {
+                    isDirectSpeaking = false
+                    cursorCallbacks.remove(key)
+                } else {
+                    val file = File(cacheDir, "$key.wav")
+                    if (file.exists()) { cache[key] = file; playFile(file) }
                 }
                 completionCallbacks.remove(key)?.invoke()
             }
         }
+
         override fun onError(id: String?) {
             val key = id ?: return
-            mainHandler.post { completionCallbacks.remove(key)?.invoke() }
+            mainHandler.post {
+                if (key.startsWith("pb_")) isDirectSpeaking = false
+                completionCallbacks.remove(key)?.invoke()
+                cursorCallbacks.remove(key)
+            }
         }
     }
 
@@ -66,7 +87,8 @@ class AudioManager(context: Context) {
         }
     }
 
-    // Play the app-open instruction clip (instructions.mp3).
+    // ── Public API ────────────────────────────────────────────────────────────
+
     fun playInstructions() {
         stopCurrent()
         try {
@@ -76,8 +98,6 @@ class AudioManager(context: Context) {
         } catch (_: Exception) {}
     }
 
-    // Play the pre-recorded Shobhana clip for a letter/number/symbol label.
-    // Stops any currently playing audio first. Falls back silently if no asset exists.
     fun playLetterSound(label: String) {
         stopCurrent()
         val path = "letter_sounds/${charToFilename(label)}"
@@ -85,38 +105,64 @@ class AudioManager(context: Context) {
             val afd = appContext.assets.openFd(path)
             playFd(afd.fileDescriptor, afd.startOffset, afd.length)
             afd.close()
-        } catch (_: Exception) { /* no clip for this label */ }
+        } catch (_: Exception) {}
     }
 
-    // Speak arbitrary text using the TTS cache.
-    // Always stops current audio first so rapid calls never overlap.
-    // onDone fires on the main thread when playback finishes (or on error).
+    /** Short activation click when the wheel appears — separate track from letter sounds. */
+    fun playActivationSound() = playClickAsset("button_sounds/activate.wav")
+
+    /** Short UI hover click — inner and outer rings have distinct sounds. */
+    fun playClickSound(isInner: Boolean) =
+        playClickAsset(if (isInner) "button_sounds/click_inner.wav" else "button_sounds/click_outer.wav")
+
+    /** Speak text via TTS cache (post-commit readout, suggestion navigation). */
     fun speakText(text: String, onDone: () -> Unit = {}) {
         if (text.isBlank()) { onDone(); return }
         stopCurrent()
-
         val key = text.hashCode().toString()
-
-        // Cache hit — play immediately; onDone fires on MediaPlayer completion
         cache[key]?.takeIf { it.exists() }?.let { playFile(it, onDone); return }
-
         if (!ttsReady) { onDone(); return }
         completionCallbacks[key] = onDone
-        val outFile = File(cacheDir, "$key.wav")
-        tts?.synthesizeToFile(text, null, outFile, key)
+        tts?.synthesizeToFile(text, null, File(cacheDir, "$key.wav"), key)
+    }
+
+    /**
+     * Speak text directly via tts.speak() for the Play button readback.
+     * onCursor fires at each word boundary with the char index so the UI
+     * can advance a cursor. onDone fires when playback finishes or errors.
+     */
+    fun speakForPlayback(text: String, onCursor: (Int) -> Unit = {}, onDone: () -> Unit = {}) {
+        stop()
+        if (text.isBlank()) { onDone(); return }
+        if (!ttsReady) { onDone(); return }
+        val key = "pb_${System.currentTimeMillis()}"
+        completionCallbacks[key] = onDone
+        cursorCallbacks[key] = onCursor
+        isDirectSpeaking = true
+        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, key)
     }
 
     fun stop() {
         completionCallbacks.clear()
+        cursorCallbacks.clear()
+        if (isDirectSpeaking) {
+            isDirectSpeaking = false
+            try { tts?.stop() } catch (_: Exception) {}
+        }
         stopCurrent()
     }
 
     fun shutdown() {
         isShuttingDown = true
         ttsReady = false
+        isDirectSpeaking = false
         completionCallbacks.clear()
+        cursorCallbacks.clear()
+        try { tts?.stop()        } catch (_: Exception) {}
         stopCurrent()
-        try { tts?.shutdown() } catch (_: Exception) {}
+        try { clickPlayer?.release() } catch (_: Exception) {}
+        clickPlayer = null
+        try { tts?.shutdown()    } catch (_: Exception) {}
         tts = null
     }
 
@@ -147,13 +193,27 @@ class AudioManager(context: Context) {
         } catch (_: Exception) {}
     }
 
+    private fun playClickAsset(path: String) {
+        try {
+            val afd = appContext.assets.openFd(path)
+            val mp  = MediaPlayer()
+            mp.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+            afd.close()
+            mp.prepare()
+            mp.setOnCompletionListener { it.release(); if (clickPlayer == mp) clickPlayer = null }
+            try { clickPlayer?.stop()    } catch (_: Exception) {}
+            try { clickPlayer?.release() } catch (_: Exception) {}
+            clickPlayer = mp
+            mp.start()
+        } catch (_: Exception) {}
+    }
+
     private fun stopCurrent() {
         try { player?.stop()    } catch (_: Exception) {}
         try { player?.release() } catch (_: Exception) {}
         player = null
     }
 
-    // Mirrors generate_letter_sounds.py char_to_filename()
     private fun charToFilename(label: String): String =
         label.codePoints().toArray().joinToString("_") { "%04X".format(it) } + ".mp3"
 
